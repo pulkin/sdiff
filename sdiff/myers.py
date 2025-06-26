@@ -73,10 +73,12 @@ def _get_diag_index(diag: int, nm: int) -> int:
 
 
 def _get_x(diag: int, progress: int, m : int) -> int:
+    assert (progress + diag - m) % 2 == 0
     return (progress + diag - m) // 2
 
 
 def _get_y(diag: int, progress: int, m : int) -> int:
+    assert (progress - diag + m) % 2 == 0
     return (progress - diag + m) // 2
 
 
@@ -297,8 +299,6 @@ def search_graph_recursive(
     # we, effectively, iterate over the cost itself
     # though it may also be seen as a round counter
     for cost in range(max_cost + 1):
-        # early return for eq_only
-
         # first, figure out whether step is reverse or not
         is_reverse_front = cost % 2
         reverse_as_sign = 1 - 2 * is_reverse_front  # +- 1 depending on the direction
