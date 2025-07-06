@@ -1,6 +1,5 @@
 import array
 from random import choice, randint, seed
-import warnings
 
 import pytest
 
@@ -119,68 +118,114 @@ def test_max_calls(driver):
     assert driver(len(a), len(b), (a, b), max_calls=2) == 10
 
 
+def check_codes_valid(eq, codes, n, m):
+    iter_codes = iter(codes)
+    x = y = 0
+    for code in iter_codes:
+        if code == 1:
+            x += 1
+        elif code == 2:
+            y += 1
+        elif code == 3:
+            assert next(iter_codes) == 0, "code 3 is not followed by code 0"
+            q = eq(x, y)
+            assert bool(q), f"eq({x}, {y}) = {q} does not eval to True"
+            x += 1
+            y += 1
+        else:
+            raise AssertionError(f"unknown {code=}")
+    assert x == n, f"{x=} != {n=}"
+    assert y == m, f"{y=} != {m=}"
+
+
+def check_code_valid_seq(a, b, codes):
+    check_codes_valid(lambda i, j: a[i] == b[j], codes, len(a), len(b))
+
+
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("n", [256, 512])
+@pytest.mark.parametrize("s", list(range(100)))
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_benchmark_call_long_short(driver, n, rtn_diff):
+def test_fuzz_call_long_short(driver, s, rtn_diff):
+    seed(s)
+    n = randint(10, 100)
+    m = randint(10, 100)
+    f = randint(0, 100)
+    _map = {(x, y): randint(0, 99) < f for x in range(n) for y in range(m)}
+
     def compare(i, j):
-        seed(j + (i << 16))
-        return choice([0, 1])
+        return _map[i, j]
 
     if rtn_diff:
-        result = array.array('b', b'\xFF' * (4 * n))
+        result = array.array('b', b'\xFF' * (n + m))
     else:
         result = None
-    cost = driver(3 * n, n, compare, result)
+    cost = driver(n, m, compare, result)
     if rtn_diff:
         assert compute_cost(result) == cost
-    assert cost == 2 * n
+        check_codes_valid(compare, result, n, m)
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("n", [256, 512, 1024])
+@pytest.mark.parametrize("s", list(range(100, 200)))
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_benchmark_str_long_short(driver, n, rtn_diff):
-    long_seq = ''.join(choice("ac") for _ in range(3 * n))
-    short_seq = ''.join(choice("ac") for _ in range(n))
+def test_fuzz_str_long_short(driver, s, rtn_diff):
+    seed(s)
+    n = randint(10, 100)
+    m = randint(10, 100)
+    f = randint(0, 100)
+    choices = "a" * (100 - f) + "c" * f
+    a = ''.join(choice(choices) for _ in range(n))
+    b = ''.join(choice(choices) for _ in range(m))
 
     if rtn_diff:
-        result = array.array('b', b'\xFF' * (len(long_seq) + len(short_seq)))
+        result = array.array('b', b'\xFF' * (n + m))
     else:
         result = None
-    cost = driver(len(long_seq), len(short_seq), (long_seq, short_seq), result)
+    cost = driver(n, m, (a, b), result)
     if rtn_diff:
         assert compute_cost(result) == cost
+        check_code_valid_seq(a, b, result)
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("n", [256, 512, 1024])
+@pytest.mark.parametrize("s", list(range(200, 300)))
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_benchmark_array_long_short(driver, n, rtn_diff):
-    long_seq = array.array('q', [randint(0, 1) for _ in range(3 * n)])
-    short_seq = array.array('q', [randint(0, 1) for _ in range(n)])
+def test_fuzz_array_long_short(driver, s, rtn_diff):
+    seed(s)
+    n = randint(10, 100)
+    m = randint(10, 100)
+    f = randint(0, 100)
+    choices = "a" * (100 - f) + "c" * f
+    a = array.array('q', [choice(choices) for _ in range(n)])
+    b = array.array('q', [choice(choices) for _ in range(m)])
 
     if rtn_diff:
-        result = array.array('b', b'\xFF' * (len(long_seq) + len(short_seq)))
+        result = array.array('b', b'\xFF' * (n + m))
     else:
         result = None
-    cost = driver(len(long_seq), len(short_seq), (long_seq, short_seq), result)
+    cost = driver(n, m, (a, b), result)
     if rtn_diff:
         assert compute_cost(result) == cost
+        check_code_valid_seq(a, b, result)
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("n", [256, 512])
+@pytest.mark.parametrize("s", list(range(300, 400)))
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_benchmark_list_long_short(driver, n, rtn_diff):
-    long_seq = [randint(0, 1) for _ in range(3 * n)]
-    short_seq = [randint(0, 1) for _ in range(n)]
+def test_fuzz_list_long_short(driver, s, rtn_diff):
+    seed(s)
+    n = randint(10, 100)
+    m = randint(10, 100)
+    f = randint(0, 100)
+    choices = "a" * (100 - f) + "c" * f
+    a = [choice(choices) for _ in range(n)]
+    b = [choice(choices) for _ in range(m)]
 
     if rtn_diff:
-        result = array.array('b', b'\xFF' * (len(long_seq) + len(short_seq)))
+        result = array.array('b', b'\xFF' * (n + m))
     else:
         result = None
-    cost = driver(len(long_seq), len(short_seq), (long_seq, short_seq), result)
+    cost = driver(n, m, (a, b), result)
     if rtn_diff:
         assert compute_cost(result) == cost
-    assert cost == 2 * n
+        check_code_valid_seq(a, b, result)

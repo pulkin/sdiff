@@ -310,6 +310,11 @@ def test_bug_0():
     assert diff(a, b, eq_only=True, min_ratio=0.75).ratio < 0.75
 
 
+def test_bug_1():
+    a, b = [1, 1, 0, 1, 1, 1, 1, 1, 1], [0, 0, 1]
+    diff(a, b, min_ratio=0, kernel="py")
+
+
 @pytest.mark.parametrize("kernel", ["py", "c"])
 def test_numpy_ext_2d(monkeypatch, kernel):
     a = np.array([
