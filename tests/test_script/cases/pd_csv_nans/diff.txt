@@ -1,0 +1,11 @@
+comparing a.csv vs b.csv
+  col1    col2    col3 col4
+- ---- ---------- ---- ----
+0  nan    --- ---  nan  nan
+        +++N/A+++          
+1  nan ---#N/A---  nan  nan
+         +++NA+++          
+2  nan  ---NaN---  nan  nan
+       +++NULL+++          
+3  nan ---<NA>---  nan  nan
+       +++None+++          

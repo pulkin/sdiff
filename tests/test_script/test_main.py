@@ -142,3 +142,11 @@ def test_co2_emissions_4(test_diff_renders, args, name):
     ])
     sync_contents(cases / f"co2_emissions/diff-empty-{name}", text, test_diff_renders)
     assert code is True
+
+
+def test_pd_nans(tmp_path, test_diff_renders):
+    code, text = process2text([
+        str(cases / "pd_csv_nans/a.csv"), str(cases / "pd_csv_nans/b.csv"),
+    ])
+    sync_contents(cases / f"pd_csv_nans/diff.txt", text, test_diff_renders)
+    assert code is True
