@@ -6,7 +6,7 @@ authors = [
 ]
 description = "Rich file comparison with a focus on structured and tabular data"
 readme = "README.md"
-license = {text = "BSD-2-Clause"}
+license = "BSD-2-Clause"
 dependencies = [
      "numpy",
     "pandas",
