@@ -14,16 +14,20 @@ def compute_cost(codes):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("n, m", [(1, 1), (2, 2), (7, 4), (7, 7)])
-def test_empty(driver, n, m):
+@pytest.mark.parametrize("v", [0, 1])
+def test_empty_full(driver, n, m, v):
     def complicated_graph(i: int, j: int) -> float:
-        return 0
+        return v
 
     result = array.array('b', b'\xFF' * (n + m))
     cost = driver(n, m, complicated_graph, result)
     assert compute_cost(result) == cost
-    assert cost == n + m
-    canonize(result)
-    assert list(result) == [1] * n + [2] * m
+    if v == 0:
+        assert cost == n + m
+        canonize(result)
+        assert list(result) == [1] * n + [2] * m
+    else:
+        assert cost == abs(n - m)
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
@@ -144,7 +148,7 @@ def check_code_valid_seq(a, b, codes):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_call_long_short(driver, rtn_diff):
+def test_fuzz_call(driver, rtn_diff):
     for s in range(100):
         seed(s)
         n = randint(10, 100)
@@ -167,7 +171,7 @@ def test_fuzz_call_long_short(driver, rtn_diff):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_str_long_short(driver, rtn_diff):
+def test_fuzz_str(driver, rtn_diff):
     for s in range(100, 200):
         seed(s)
         n = randint(10, 100)
@@ -189,13 +193,13 @@ def test_fuzz_str_long_short(driver, rtn_diff):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_array_long_short(driver, rtn_diff):
+def test_fuzz_array(driver, rtn_diff):
     for s in range(200, 300):
         seed(s)
         n = randint(10, 100)
         m = randint(10, 100)
         f = randint(0, 100)
-        choices = "a" * (100 - f) + "c" * f
+        choices = [0] * (100 - f) + [1] * f
         a = array.array('q', [choice(choices) for _ in range(n)])
         b = array.array('q', [choice(choices) for _ in range(m)])
 
@@ -211,7 +215,7 @@ def test_fuzz_array_long_short(driver, rtn_diff):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_list_long_short(driver, rtn_diff):
+def test_fuzz_list(driver, rtn_diff):
     for s in range(300, 400):
         seed(s)
         n = randint(10, 100)
