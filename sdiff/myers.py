@@ -90,6 +90,83 @@ def _fill_no_solution(out: array, i: int, j: int, n: int, m: int) -> None:
         out[ix] = 2
 
 
+def _is_left_edge(
+        diag_updated_from: int,
+        n: int,
+        m: int,
+        nm: int,
+        is_reverse_front: int,
+        fronts: array,
+        front_updated_offset: int,
+) -> bool:
+    progress = fronts[front_updated_offset + _get_diag_index(diag_updated_from, nm)]
+    if is_reverse_front:
+        return _get_x(diag_updated_from, progress, m) == 0
+    else:
+        return _get_y(diag_updated_from, progress, m) == m
+
+
+def _is_right_edge(
+        diag_updated_to: int,
+        n: int,
+        m: int,
+        nm: int,
+        is_reverse_front: int,
+        fronts: array,
+        front_updated_offset: int,
+) -> bool:
+    progress = fronts[front_updated_offset + _get_diag_index(diag_updated_to, nm)]
+    if is_reverse_front:
+        return  _get_y(diag_updated_to, progress, m) == 0
+    else:
+        return _get_x(diag_updated_to, progress, m) == n
+
+
+def _do_branch(
+        nm: int,
+        diag_updated_from: int,
+        no_branch_left: bool,
+        diag_updated_to: int,
+        no_branch_right: bool,
+        is_reverse_front: int,
+        reverse_as_sign: int,
+        fronts: array,
+        front_updated_offset: int,
+) -> None:
+    ix = -1
+    previous = -1
+    ix0 = _get_diag_index(diag_updated_from, nm)
+    progress0 = fronts[front_updated_offset + ix0]
+
+    for diag in range(diag_updated_from, diag_updated_to + 2, 2):
+
+        # source and destination indexes for the update
+        progress_left = fronts[front_updated_offset + _get_diag_index(diag - 1, nm)]
+        if diag == diag_updated_to and _get_diag_index(diag + 1, nm) == ix0:
+            progress_right = progress0
+        else:
+            progress_right = fronts[front_updated_offset + _get_diag_index(diag + 1, nm)]
+
+        if diag == diag_updated_from and not no_branch_left:  # possible in cases 2, 4
+            progress = progress_right
+        elif diag == diag_updated_to and not no_branch_right:  # possible in cases 1, 3
+            progress = progress_left
+        elif is_reverse_front:
+            progress = min(progress_left, progress_right)
+        else:
+            progress = max(progress_left, progress_right)
+
+        # the idea here is to delay updating the front by one iteration
+        # such that the new progress values do not interfer with the original ones
+        if ix != -1:
+            fronts[front_updated_offset + ix] = previous + reverse_as_sign
+
+        previous = progress
+        ix = _get_diag_index(diag, nm)
+
+    fronts[front_updated_offset + ix] = previous + reverse_as_sign
+
+
 def search_graph_recursive(
         n: int,
         m: int,
@@ -216,7 +293,8 @@ def search_graph_recursive(
         m -= 1
 
     if n * m == 0:
-        _fill_no_solution(out, i, j, n, m)
+        if out is not None:
+            _fill_no_solution(out, i, j, n, m)
         return n + m
 
     """
@@ -294,7 +372,7 @@ def search_graph_recursive(
     # the progress of the forward front starts at 0
     # the progress of the reverse front starts at n + m
     fronts = array('Q', (0,) * nm + (n_m,) * nm)
-    dimensions = (n, m)
+    front_ranges = array('Q', (m, m, n, n))
 
     # we, effectively, iterate over the cost itself
     # though it may also be seen as a round counter
@@ -305,32 +383,10 @@ def search_graph_recursive(
 
         # one of the fronts is updated, another one we "face"
         front_updated_offset = nm * is_reverse_front
-
-        # figure out the range of diagonals we are dealing with
-        # turn 0 (even): [n]
-        # turn 1 (odd) : [m]
-        # turn 2 (even): [n - 1:n + 1]
-        # turn 3 (odd) : [m - 1:m + 1]
-        # ...
-        # (even turns)
-        # turn 2 * n    : [0:?]
-        # turn 2 * n + 2: [1:?]
-        # ...
-
-        # source and destination diagonals from the point of view of
-        # the front being updated
-        diag_src = dimensions[1 - is_reverse_front]
-        diag_dst = dimensions[is_reverse_front]
-
-        # the range of diagonals here
-        _p = cost // 2
-        diag_updated_from = abs(diag_src - _p)
-        diag_updated_to = n_m - abs(diag_dst - _p)
-        # the range of diagonals facing
-        # (to check for return)
-        _p = (cost - 1) // 2 + 1
-        diag_facing_from = abs(diag_dst - _p)
-        diag_facing_to = n_m - abs(diag_src - _p)
+        diag_updated_from = front_ranges[2 * is_reverse_front]
+        diag_updated_to = front_ranges[2 * is_reverse_front + 1]
+        diag_facing_from = front_ranges[2 * (1 - is_reverse_front)]
+        diag_facing_to = front_ranges[2 * (1 - is_reverse_front) + 1]
 
         # phase 1: propagate diagonals
         # every second diagonal is propagated during each iteration
@@ -360,6 +416,19 @@ def search_graph_recursive(
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
                 y += reverse_as_sign
+            else:
+                # we need to adjust one of the edges
+                if is_reverse_front:
+                    if x == -1:
+                        diag_updated_from = max(diag_updated_from, diag)
+                    if y == -1:
+                        diag_updated_to = min(diag_updated_to, diag)
+                else:
+                    if x == n:
+                        diag_updated_to = min(diag_updated_to, diag)
+                    if y == m:
+                        diag_updated_from = max(diag_updated_from, diag)
+            assert diag_updated_from <= diag_updated_to
             fronts[front_updated_offset + ix] = progress
 
             # if front and reverse overlap we are done
@@ -449,37 +518,20 @@ def search_graph_recursive(
         #      1   3   5   7
         #
 
-        cost_2_ = cost // 2 + 1
-        diag_updated_from_ = abs(diag_src - cost_2_)
-        diag_updated_to_ = n_m - abs(diag_dst - cost_2_)
+        # check left edge
+        is_left_edge = _is_left_edge(diag_updated_from, n, m, nm, is_reverse_front, fronts, front_updated_offset)
+        diag_updated_from += 2 * is_left_edge - 1
+        front_ranges[2 * is_reverse_front] = diag_updated_from
 
-        ix = -1
-        previous = -1
+        # check right edge
+        is_right_edge = _is_right_edge(diag_updated_to, n, m, nm, is_reverse_front, fronts, front_updated_offset)
+        diag_updated_to -= 2 * is_right_edge - 1
+        front_ranges[2 * is_reverse_front + 1] = diag_updated_to
 
-        for diag_ in range(diag_updated_from_, diag_updated_to_ + 2, 2):
+        assert diag_updated_from <= diag_updated_to
 
-            # source and destination indexes for the update
-            progress_left = fronts[front_updated_offset + _get_diag_index(diag_ - 1, nm)]
-            progress_right = fronts[front_updated_offset + _get_diag_index(diag_ + 1, nm)]
-
-            if diag_ == diag_updated_from - 1:  # possible in cases 2, 4
-                progress = progress_right
-            elif diag_ == diag_updated_to + 1:  # possible in cases 1, 3
-                progress = progress_left
-            elif is_reverse_front:
-                progress = min(progress_left, progress_right)
-            else:
-                progress = max(progress_left, progress_right)
-
-            # the idea here is to delay updating the front by one iteration
-            # such that the new progress values do not interfer with the original ones
-            if ix != -1:
-                fronts[front_updated_offset + ix] = previous + reverse_as_sign
-
-            previous = progress
-            ix = _get_diag_index(diag_, nm)
-
-        fronts[front_updated_offset + ix] = previous + reverse_as_sign
+        _do_branch(nm, diag_updated_from, is_left_edge, diag_updated_to, is_right_edge, is_reverse_front,
+                   reverse_as_sign, fronts, front_updated_offset)
 
     if out is not None:
         _fill_no_solution(out, i, j, n, m)
