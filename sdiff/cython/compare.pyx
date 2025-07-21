@@ -4,6 +4,9 @@ cdef class CompareBackend:
     cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
         raise NotImplementedError
 
+    def __call__(self, i, j):
+        return self.compare(i, j)
+
 
 cdef class CompareCallBackend(CompareBackend):
     def __init__(self, object o):

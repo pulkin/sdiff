@@ -1,85 +1,11 @@
 # cython: language_level=3
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
-from .compare cimport (
-    CompareBackend,
-    CompareCallBackend,
-    ComparePythonBackend,
-    CompareStrBackend,
-    CompareBufferBackend,
-    CompareBufferBackend2D,
-)
+from .compare cimport CompareBackend
+from .protocols import wrap
 
 import array
 import cython
 from warnings import warn
-
-
-cdef CompareBackend _get_protocol(Py_ssize_t n, Py_ssize_t m, object compare, int ext_no_python=0, int ext_2d_kernel=0, ext_2d_kernel_weights=None):
-    """
-    Figures out the compare protocol from the argument.
-
-    Parameters
-    ----------
-    n, m
-        The size of objects being compared.
-    compare
-        A callable or a tuple of entities to compare.
-    ext_no_python
-        If set to True, will disallow python protocols
-        (``__eq__`` and call) but raise instead.
-    ext_2d_kernel
-        If set to True, will allow 2D numpy array kernel.
-    ext_2d_kernel_weights
-        Optional weights for the previous.
-
-    Returns
-    -------
-    The resulting protocol.
-    """
-    if isinstance(compare, tuple):
-        a, b = compare
-        ta, tb = type(a), type(b)
-
-        if ta == tb:
-            if type(a) is str:
-                return CompareStrBackend(a, b)
-            else:
-                try:
-                    mem_a = memoryview(a)
-                    mem_b = memoryview(b)
-                except:
-                    pass
-                else:
-                    if mem_a.ndim != mem_b.ndim:
-                        raise ValueError(f"tensors have different dimensionality: {mem_a.ndim} != {mem_b.ndim}")
-                    if mem_a.format == mem_b.format and mem_a.itemsize == mem_b.itemsize:
-                        if mem_a.ndim == 1:
-                            if mem_a.nbytes == 0 or mem_b.nbytes == 0:  # cannot cast
-                                return CompareBackend()
-                            return CompareBufferBackend(
-                                mem_a.cast('b', shape=[mem_a.shape[0], mem_a.itemsize]),
-                                mem_b.cast('b', shape=[mem_b.shape[0], mem_b.itemsize]),
-                            )
-                        elif mem_a.ndim == 2 and ext_2d_kernel:
-                            if mem_a.shape[1] != mem_b.shape[1]:
-                                raise ValueError(f"mismatch of the trailing dimension for 2D extension: {mem_a.shape[1]} != {mem_b.shape[1]}")
-                            if mem_a.nbytes == 0 or mem_b.nbytes == 0:  # cannot cast
-                                return CompareBackend()
-                            if ext_2d_kernel_weights is None:
-                                ext_2d_kernel_weights = array.array('d', [1] * mem_a.shape[1])
-                            return CompareBufferBackend2D(
-                                mem_a.cast('b').cast('b', shape=[*mem_a.shape, mem_a.itemsize]),
-                                mem_b.cast('b').cast('b', shape=[*mem_b.shape, mem_b.itemsize]),
-                                ext_2d_kernel_weights,
-                            )
-                        else:
-                            raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
-
-        if ext_no_python:
-            raise ValueError("failed to pick a suitable protocol")
-        return ComparePythonBackend(a, b)
-    else:
-        return CompareCallBackend(compare)
 
 
 cdef inline Py_ssize_t labs(long i) noexcept:
@@ -441,7 +367,7 @@ def search_graph_recursive(
             warn("the 'out' argument is ignored for eq_only=True")
 
     try:
-        compare_backend = _get_protocol(n, m, similarity_ratio_getter, ext_no_python, ext_2d_kernel, ext_2d_kernel_weights)
+        compare_backend = wrap(similarity_ratio_getter, allow_python=not ext_no_python, allow_k2d=ext_2d_kernel, k2d_weights=ext_2d_kernel_weights)
         return _search_graph_recursive(
             n=n,
             m=m,
