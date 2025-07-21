@@ -1,6 +1,6 @@
 # cython: language_level=3
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
-from .compare cimport CompareBackend
+from .compare cimport ComparisonBackend
 from .protocols import wrap
 
 import array
@@ -143,7 +143,7 @@ cdef inline void _do_branch(
 cdef Py_ssize_t _search_graph_recursive(
     Py_ssize_t n,
     Py_ssize_t m,
-    CompareBackend compare_backend,
+    ComparisonBackend compare_backend,
     const double accept,
     Py_ssize_t max_cost,
     Py_ssize_t max_calls,
@@ -357,7 +357,7 @@ def search_graph_recursive(
         Py_ssize_t nm = min(n, m) + 1
         Py_ssize_t* buffer = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * nm)
         Py_ssize_t* buffer2 = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * 2)
-        CompareBackend compare_backend
+        ComparisonBackend compare_backend
 
     if out is None:
         cout = _null_script

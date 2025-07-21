@@ -1,6 +1,6 @@
 # cython: language_level=3
 
-cdef class CompareBackend:
+cdef class ComparisonBackend:
     cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
         raise NotImplementedError
 
@@ -8,7 +8,7 @@ cdef class CompareBackend:
         return self.compare(i, j)
 
 
-cdef class CompareCallBackend(CompareBackend):
+cdef class ComparisonCallBackend(ComparisonBackend):
     def __init__(self, object o):
         self.callable = o
 
@@ -16,7 +16,7 @@ cdef class CompareCallBackend(CompareBackend):
         return self.callable(i, j)
 
 
-cdef class ComparePythonBackend(CompareBackend):
+cdef class ComparisonPythonBackend(ComparisonBackend):
     def __init__(self, object a, object b):
         self.a = a
         self.b = b
@@ -25,7 +25,7 @@ cdef class ComparePythonBackend(CompareBackend):
         return self.a[i] == self.b[j]
 
 
-cdef class CompareStrBackend(CompareBackend):
+cdef class ComparisonStrBackend(ComparisonBackend):
     def __init__(self, object a, object b):
         self.a = a
         self.b = b
@@ -34,7 +34,7 @@ cdef class CompareStrBackend(CompareBackend):
         return self.a[i] == self.b[j]
 
 
-cdef class CompareBufferBackend(CompareBackend):
+cdef class ComparisonBufferBackend(ComparisonBackend):
     def __init__(self, const char[:, :] a, const char[:, :] b):
         assert a.shape[1] == b.shape[1]
         self.a = a
@@ -49,7 +49,7 @@ cdef class CompareBufferBackend(CompareBackend):
         return 1
 
 
-cdef class CompareBufferBackend2D(CompareBackend):
+cdef class ComparisonBufferBackend2D(ComparisonBackend):
     def __init__(self, const char[:, :, :] a, const char[:, :, :] b, const double[:] weights):
         assert a.shape[2] == b.shape[2]
         assert a.shape[1] == b.shape[1]
