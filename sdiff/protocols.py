@@ -32,12 +32,14 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
     -------
     The resulting protocol.
     """
+    is_pair = False
     if isinstance(data, tuple):
         a, b = data
         ta, tb = type(a), type(b)
+        is_pair = True
 
         if ta == tb:
-            if type(a) is str:
+            if ta is str:
                 return ComparisonStrBackend(a, b)
             else:
                 try:
@@ -71,8 +73,9 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
                         else:
                             raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
 
-        if not allow_python:
-            raise ValueError("failed to pick a suitable protocol")
+    if not allow_python:
+        raise ValueError("failed to pick a type-aware protocol")
+    if is_pair:
         return ComparisonPythonBackend(a, b)
     else:
         return ComparisonCallBackend(data)

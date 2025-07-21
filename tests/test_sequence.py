@@ -282,7 +282,7 @@ def test_big_np(monkeypatch, max_depth):
 
 
 def test_strictly_no_python_0():
-    with pytest.raises(ValueError, match="failed to pick a suitable protocol"):
+    with pytest.raises(ValueError, match="failed to pick a type-aware protocol"):
         diff([0, 1, 2], [0, 1, 2], ext_no_python=True)
 
 
