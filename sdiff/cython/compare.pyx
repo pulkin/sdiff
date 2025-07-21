@@ -1,148 +1,68 @@
 # cython: language_level=3
-import numpy as np
-from cpython.ref cimport PyObject
-from cpython.mem cimport PyMem_Malloc, PyMem_Free
-import array
-import cython
-from warnings import warn
 
-try:
-    import numpy
-except ImportError:
-    numpy_avail = False
-else:
-    numpy_avail = True
+cdef class CompareBackend:
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        raise NotImplementedError
 
 
-cdef double compare_call(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<object>a)(i, j)
+cdef class CompareCallBackend(CompareBackend):
+    def __init__(self, object o):
+        self.callable = o
+
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        return self.callable(i, j)
 
 
-cdef double compare_str(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<unicode>a)[i] == (<unicode>b)[j]
+cdef class ComparePythonBackend(CompareBackend):
+    def __init__(self, object a, object b):
+        self.a = a
+        self.b = b
+
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        return self.a[i] == self.b[j]
 
 
-cdef double compare_array_8(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<char*>a)[i] == (<char*>b)[j]
+cdef class CompareStrBackend(CompareBackend):
+    def __init__(self, object a, object b):
+        self.a = a
+        self.b = b
+
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        return self.a[i] == self.b[j]
 
 
-cdef double compare_array_8_ext_2d(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-        double r = 0
-    for t in range(n):
-        r += ((<char*>a)[i * n + t] == (<char*>b)[j * n + t]) * (1 if extra == cython.NULL else (<double*>extra)[t])
-    return r / n
+cdef class CompareBufferBackend(CompareBackend):
+    def __init__(self, const char[:, :] a, const char[:, :] b):
+        assert a.shape[1] == b.shape[1]
+        self.a = a
+        self.b = b
+
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        cdef:
+            Py_ssize_t t
+        for t in range(self.a.shape[1]):
+            if self.a[i, t] != self.b[j, t]:
+                return 0
+        return 1
 
 
-cdef double compare_array_16(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<short*>a)[i] == (<short*>b)[j]
+cdef class CompareBufferBackend2D(CompareBackend):
+    def __init__(self, const char[:, :, :] a, const char[:, :, :] b, const double[:] weights):
+        assert a.shape[2] == b.shape[2]
+        assert a.shape[1] == b.shape[1]
+        assert a.shape[1] == weights.shape[0]
+        self.a = a
+        self.b = b
+        self.weights = weights
 
-
-cdef double compare_array_16_ext_2d(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-        double r = 0
-    for t in range(n):
-        r += ((<short*>a)[i * n + t] == (<short*>b)[j * n + t]) * (1 if extra == cython.NULL else (<double*>extra)[t])
-    return r / n
-
-
-cdef double compare_array_32(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<int*>a)[i] == (<int*>b)[j]
-
-
-cdef double compare_array_32_ext_2d(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-        double r = 0
-    for t in range(n):
-        r += ((<int*>a)[i * n + t] == (<int*>b)[j * n + t]) * (1 if extra == cython.NULL else (<double*>extra)[t])
-    return r / n
-
-
-cdef double compare_array_64(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<long*>a)[i] == (<long*>b)[j]
-
-
-cdef double compare_array_64_ext_2d(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-        double r = 0
-    for t in range(n):
-        r += ((<long*>a)[i * n + t] == (<long*>b)[j * n + t]) * (1. if extra == cython.NULL else (<double*>extra)[t])
-    return r / n
-
-
-cdef double compare_array_128(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<long long*>a)[i] == (<long long*>b)[j]
-
-
-cdef double compare_array_128_ext_2d(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-        double r = 0
-    for t in range(n):
-        r += ((<long long*>a)[i * n + t] == (<long long*>b)[j * n + t]) * (1 if extra == cython.NULL else (<double*>extra)[t])
-    return r / n
-
-
-cdef double compare_array_var(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    cdef:
-        Py_ssize_t t
-    a += i * n
-    b += j * n
-    for t in range(n):
-        if (<char*>a)[t] != (<char*>b)[t]:
-            return 0
-    return 1
-
-
-cdef double compare_object(void* a, void* b, Py_ssize_t i, Py_ssize_t j, Py_ssize_t n, void* extra):
-    return (<object>a)[i] == (<object>b)[j]
-
-
-# cdef double ratio(void* a, void* b, char* protocol, double* weights):
-#     cdef:
-#         double result = 0
-#         double weight
-#         Py_ssize_t i = 0
-#         char code
-#
-#     if protocol.code == b'U':
-#         return ((<unicode> protocol.a)[i] == (<unicode> protocol.b)[j]) * protocol.weight[0]
-#
-#     for i in range(protocol.n):
-#         code = protocol.code[i]
-#         if i == b'c':
-#             weight = (<char> a_) == (<char> b_)
-#             a_ += sizeof(char)
-#             b_ += sizeof(char)
-#         elif i == b'h':
-#             weight = (<short> a_) == (<short> b_)
-#             a_ += sizeof(short)
-#             b_ += sizeof(short)
-#         elif i == b'i':
-#             weight = (<int> a_) == (<int> b_)
-#             a_ += sizeof(int)
-#             b_ += sizeof(int)
-#         elif i == b'f':
-#             weight = (<long> a_) == (<long> b_)
-#             a_ += sizeof(long)
-#             b_ += sizeof(long)
-#         elif i == b'l':
-#             weight = (<long long> a_) == (<long long> b_)
-#             a_ += sizeof(long long)
-#             b_ += sizeof(long long)
-#         elif i == b'f':
-#             weight = (<float> a_) == (<float> b_)
-#             a_ += sizeof(float)
-#             b_ += sizeof(float)
-#         elif i == b'd':
-#             weight = (<double> a_) == (<double> b_)
-#             a_ += sizeof(double)
-#             b_ += sizeof(double)
-#         else:
-#             raise ValueError(f"unknown code: {i}")
-#         result += weight * protocol.weight[i]
-#     return result
+    cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        cdef:
+            Py_ssize_t t, u
+            double result = 0
+        for u in range(self.weights.shape[0]):
+            for t in range(self.a.shape[2]):
+                if self.a[i, u, t] != self.b[j, u, t]:
+                    break
+            else:
+                result += self.weights[u]
+        return result / self.weights.shape[0]

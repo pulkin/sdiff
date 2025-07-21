@@ -355,7 +355,7 @@ def test_numpy_ext_2d_weights(monkeypatch, kernel):
     b[1, 1] = 9
     b[3] += 100
 
-    weights = [.5, 2, .5]
+    weights = array('d', [.5, 2, .5])
 
     monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 

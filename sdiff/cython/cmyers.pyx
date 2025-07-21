@@ -1,31 +1,20 @@
 # cython: language_level=3
-from cpython.ref cimport PyObject
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from .compare cimport (
-    compare_protocol,
-    compare_call, compare_str, compare_object,
-    compare_array_8, compare_array_8_ext_2d,
-    compare_array_16, compare_array_16_ext_2d,
-    compare_array_32, compare_array_32_ext_2d,
-    compare_array_64, compare_array_64_ext_2d,
-    compare_array_128, compare_array_128_ext_2d,
-    compare_array_var,
+    CompareBackend,
+    CompareCallBackend,
+    ComparePythonBackend,
+    CompareStrBackend,
+    CompareBufferBackend,
+    CompareBufferBackend2D,
 )
 
-import numpy as np
 import array
 import cython
 from warnings import warn
 
-try:
-    import numpy
-except ImportError:
-    numpy_avail = False
-else:
-    numpy_avail = True
 
-
-cdef compare_protocol _get_protocol(Py_ssize_t n, Py_ssize_t m, object compare, int ext_no_python=0, int ext_2d_kernel=0, ext_2d_kernel_weights=None):
+cdef CompareBackend _get_protocol(Py_ssize_t n, Py_ssize_t m, object compare, int ext_no_python=0, int ext_2d_kernel=0, ext_2d_kernel_weights=None):
     """
     Figures out the compare protocol from the argument.
 
@@ -47,190 +36,50 @@ cdef compare_protocol _get_protocol(Py_ssize_t n, Py_ssize_t m, object compare, 
     -------
     The resulting protocol.
     """
-    cdef:
-        unicode a_unicode, b_unicode
-        compare_protocol result
-        long address_a, address_b
-        int item_size
-    result.kernel = cython.NULL
-    result.extra = cython.NULL
-    result.n = 0
-
     if isinstance(compare, tuple):
         a, b = compare
+        ta, tb = type(a), type(b)
 
-        if type(a) == type(b):
+        if ta == tb:
             if type(a) is str:
-                a_unicode = a
-                b_unicode = b
-                result.kernel = compare_str
-                result.a = <void*>a_unicode
-                result.b = <void*>b_unicode
-                return result
+                return CompareStrBackend(a, b)
+            else:
+                try:
+                    mem_a = memoryview(a)
+                    mem_b = memoryview(b)
+                except:
+                    pass
+                else:
+                    if mem_a.ndim != mem_b.ndim:
+                        raise ValueError(f"tensors have different dimensionality: {mem_a.ndim} != {mem_b.ndim}")
+                    if mem_a.format == mem_b.format and mem_a.itemsize == mem_b.itemsize:
+                        if mem_a.ndim == 1:
+                            if mem_a.nbytes == 0 or mem_b.nbytes == 0:  # cannot cast
+                                return CompareBackend()
+                            return CompareBufferBackend(
+                                mem_a.cast('b', shape=[mem_a.shape[0], mem_a.itemsize]),
+                                mem_b.cast('b', shape=[mem_b.shape[0], mem_b.itemsize]),
+                            )
+                        elif mem_a.ndim == 2 and ext_2d_kernel:
+                            if mem_a.shape[1] != mem_b.shape[1]:
+                                raise ValueError(f"mismatch of the trailing dimension for 2D extension: {mem_a.shape[1]} != {mem_b.shape[1]}")
+                            if mem_a.nbytes == 0 or mem_b.nbytes == 0:  # cannot cast
+                                return CompareBackend()
+                            if ext_2d_kernel_weights is None:
+                                ext_2d_kernel_weights = array.array('d', [1] * mem_a.shape[1])
+                            return CompareBufferBackend2D(
+                                mem_a.cast('b').cast('b', shape=[*mem_a.shape, mem_a.itemsize]),
+                                mem_b.cast('b').cast('b', shape=[*mem_b.shape, mem_b.itemsize]),
+                                ext_2d_kernel_weights,
+                            )
+                        else:
+                            raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
 
-            if type(a) is bytes:
-                result.kernel = compare_array_8
-                result.a = <char*> a
-                result.b = <char*> b
-                return result
-
-            if isinstance(a, array.array):
-                if a.itemsize == b.itemsize:
-                    item_size = a.itemsize
-                    if item_size == 8:
-                        result.kernel = compare_array_64
-                    elif item_size == 4:
-                        result.kernel = compare_array_32
-                    elif item_size == 2:
-                        result.kernel = compare_array_16
-                    elif item_size == 1:
-                        result.kernel = compare_array_8
-                    else:
-                        result.kernel = compare_array_var
-                        result.n = item_size
-
-                    address_a, _ = a.buffer_info()
-                    address_b, _ = b.buffer_info()
-                    result.a = <void*> address_a
-                    result.b = <void*> address_b
-                    return result
-
-            # to keep numpy dependence optional we figure out the
-            # array pointer manually
-            if numpy_avail and isinstance(a, numpy.ndarray) and isinstance(b, numpy.ndarray):
-                assert a.ndim == b.ndim, "arrays have different dimension counts"
-                a_data = a.data
-                b_data = b.data
-                item_size = a_data.itemsize
-
-                address_a = a.ctypes.data
-                address_b = b.ctypes.data
-                result.a = <void*> address_a
-                result.b = <void*> address_b
-
-                if ext_2d_kernel and a.ndim == 2:
-                    assert a.dtype == b.dtype, "2D extension: arrays have differt dtypes"
-                    assert a_data.contiguous, "2D extension: array a is not contagious"
-                    assert b_data.contiguous, "2D extension: array b is not contagious"
-                    assert a_data.shape[1] == b_data.shape[1], "2D extension: arrays a and b have different shape[1]"
-                    if ext_2d_kernel_weights is not None:
-                        assert ext_2d_kernel_weights.dtype == np.float64, "2D extension: weights are not float64"
-                        weights_data = ext_2d_kernel_weights.data
-                        assert weights_data.shape == (a_data.shape[1],), "2D extension: wrong shape of weights"
-                        assert weights_data.contiguous, "2D extension: weights are not contiguous"
-                        address_a = ext_2d_kernel_weights.ctypes.data
-                        result.extra = <void*> address_a
-                    result.n = a_data.shape[1]
-
-                    if item_size == 16:
-                        result.kernel = compare_array_128_ext_2d
-                    elif item_size == 8:
-                        result.kernel = compare_array_64_ext_2d
-                    elif item_size == 4:
-                        result.kernel = compare_array_32_ext_2d
-                    elif item_size == 2:
-                        result.kernel = compare_array_16_ext_2d
-                    elif item_size == 1:
-                        result.kernel = compare_array_8_ext_2d
-                    else:
-                        raise ValueError("2D extension: unsupported item size")
-                    return result
-
-                if a.ndim == 1 and a.dtype == b.dtype and a_data.contiguous and b_data.contiguous:
-                    if item_size == 16:
-                        result.kernel = compare_array_128
-                    elif item_size == 8:
-                        result.kernel = compare_array_64
-                    elif item_size == 4:
-                        result.kernel = compare_array_32
-                    elif item_size == 2:
-                        result.kernel = compare_array_16
-                    elif item_size == 1:
-                        result.kernel = compare_array_8
-                    else:
-                        result.kernel = compare_array_var
-                        result.n = item_size
-                    return result
-
-            if ext_no_python:
-                raise ValueError("failed to pick a suitable protocol")
-            result.kernel = compare_object
-            result.a = <void*>a
-            result.b = <void*>b
-            return result
-
-    if ext_no_python:
-        raise ValueError("failed to pick a suitable protocol")
-    result.kernel = compare_call
-    result.a = <PyObject*>compare
-    return result
-
-
-def _test_get_protocol_obj():
-    _keep_this_ref = ([0, 2], [1, 0])
-    cdef compare_protocol cmp = _get_protocol(2, 2, _keep_this_ref)
-    assert cmp.kernel == compare_object
-    assert not cmp.kernel(cmp.a, cmp.b, 0, 0, 0, cmp.extra)
-    assert cmp.kernel(cmp.a, cmp.b, 0, 1, 0, cmp.extra)
-
-
-def _test_get_protocol_call():
-    def f(i, j):
-        return i == 0 and j == 1
-    cdef compare_protocol cmp = _get_protocol(2, 2, f)
-    assert cmp.kernel == compare_call
-    assert not cmp.kernel(cmp.a, cmp.b, 0, 0, 0, cmp.extra)
-    assert cmp.kernel(cmp.a, cmp.b, 0, 1, 0, cmp.extra)
-
-
-def _test_get_protocol_str():
-    _keep_this_ref = ("ac", "ba")
-    cdef compare_protocol cmp = _get_protocol(2, 2, _keep_this_ref)
-    assert cmp.kernel == compare_str
-    assert not cmp.kernel(cmp.a, cmp.b, 0, 0, 0, cmp.extra)
-    assert cmp.kernel(cmp.a, cmp.b, 0, 1, 0, cmp.extra)
-
-
-def _test_get_protocol_array():
-    cdef compare_protocol cmp
-
-    for typecode in "bBhHiIlLqQfd":
-        _keep_this_ref = (array.array(typecode, (0, 2)), array.array(typecode, (1, 0)))
-        cmp = _get_protocol(2, 2, _keep_this_ref)
-        size = _keep_this_ref[0].itemsize
-
-        if size == 8:
-            assert cmp.kernel == compare_array_64
-        elif size == 4:
-            assert cmp.kernel == compare_array_32
-        elif size == 2:
-            assert cmp.kernel == compare_array_16
-        elif size == 1:
-            assert cmp.kernel == compare_array_8
-
-        assert not cmp.kernel(cmp.a, cmp.b, 0, 0, 0, cmp.extra)
-        assert cmp.kernel(cmp.a, cmp.b, 0, 1, 0, cmp.extra)
-
-
-def _test_get_protocol_numpy():
-    cdef compare_protocol cmp
-
-    for dtype in numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.float16, numpy.float32, numpy.float64:
-        _keep_this_ref = (numpy.array((0, 2), dtype=dtype), numpy.array((1, 0), dtype=dtype))
-        cmp = _get_protocol(2, 2, _keep_this_ref)
-        size = _keep_this_ref[0].data.itemsize
-
-        if size == 8:
-            assert cmp.kernel == compare_array_64
-        elif size == 4:
-            assert cmp.kernel == compare_array_32
-        elif size == 2:
-            assert cmp.kernel == compare_array_16
-        elif size == 1:
-            assert cmp.kernel == compare_array_8
-
-        assert not cmp.kernel(cmp.a, cmp.b, 0, 0, 0, cmp.extra)
-        assert cmp.kernel(cmp.a, cmp.b, 0, 1, 0, cmp.extra)
+        if ext_no_python:
+            raise ValueError("failed to pick a suitable protocol")
+        return ComparePythonBackend(a, b)
+    else:
+        return CompareCallBackend(compare)
 
 
 cdef inline Py_ssize_t labs(long i) noexcept:
@@ -368,7 +217,7 @@ cdef inline void _do_branch(
 cdef Py_ssize_t _search_graph_recursive(
     Py_ssize_t n,
     Py_ssize_t m,
-    const compare_protocol similarity_ratio_getter,
+    CompareBackend compare_backend,
     const double accept,
     Py_ssize_t max_cost,
     Py_ssize_t max_calls,
@@ -390,14 +239,7 @@ cdef Py_ssize_t _search_graph_recursive(
 
     # strip matching ends of the sequence
     # forward
-    while n * m > 0 and similarity_ratio_getter.kernel(
-            similarity_ratio_getter.a,
-            similarity_ratio_getter.b,
-            i,
-            j,
-            similarity_ratio_getter.n,
-            similarity_ratio_getter.extra,
-    ) >= accept:
+    while n * m > 0 and compare_backend.compare(i, j) >= accept:
         n_calls += 1
         ix = i + j
         if rtn_script:
@@ -408,14 +250,7 @@ cdef Py_ssize_t _search_graph_recursive(
         n -= 1
         m -= 1
     # ... and reverse
-    while n * m > 0 and similarity_ratio_getter.kernel(
-            similarity_ratio_getter.a,
-            similarity_ratio_getter.b,
-            i + n - 1,
-            j + m - 1,
-            similarity_ratio_getter.n,
-            similarity_ratio_getter.extra,
-    ) >= accept:
+    while n * m > 0 and compare_backend.compare(i + n - 1, j + m - 1) >= accept:
         n_calls += 1
         ix = i + j + n + m - 2
         if rtn_script:
@@ -477,14 +312,7 @@ cdef Py_ssize_t _search_graph_recursive(
             # slide down the progress coordinate
             while 0 <= x < n and 0 <= y < m:
                 n_calls += 1
-                if similarity_ratio_getter.kernel(
-                        similarity_ratio_getter.a,
-                        similarity_ratio_getter.b,
-                        x + i,
-                        y + j,
-                        similarity_ratio_getter.n,
-                        similarity_ratio_getter.extra,
-                ) < accept:
+                if compare_backend.compare(x + i, y + j) < accept:
                     break
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
@@ -531,7 +359,7 @@ cdef Py_ssize_t _search_graph_recursive(
                         _search_graph_recursive(
                             n=x,
                             m=y,
-                            similarity_ratio_getter=similarity_ratio_getter,
+                            compare_backend=compare_backend,
                             accept=accept,
                             max_cost=cost // 2 + cost % 2,
                             max_calls=max_calls,
@@ -545,7 +373,7 @@ cdef Py_ssize_t _search_graph_recursive(
                         _search_graph_recursive(
                             n=n - x2,
                             m=m - y2,
-                            similarity_ratio_getter=similarity_ratio_getter,
+                            compare_backend=compare_backend,
                             accept=accept,
                             max_cost=cost // 2,
                             max_calls=max_calls,
@@ -603,6 +431,7 @@ def search_graph_recursive(
         Py_ssize_t nm = min(n, m) + 1
         Py_ssize_t* buffer = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * nm)
         Py_ssize_t* buffer2 = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * 2)
+        CompareBackend compare_backend
 
     if out is None:
         cout = _null_script
@@ -611,14 +440,12 @@ def search_graph_recursive(
         if eq_only:
             warn("the 'out' argument is ignored for eq_only=True")
 
-    if ext_2d_kernel_weights is not None:
-        ext_2d_kernel_weights = np.ascontiguousarray(ext_2d_kernel_weights, dtype=np.float64)
-
     try:
+        compare_backend = _get_protocol(n, m, similarity_ratio_getter, ext_no_python, ext_2d_kernel, ext_2d_kernel_weights)
         return _search_graph_recursive(
             n=n,
             m=m,
-            similarity_ratio_getter=_get_protocol(n, m, similarity_ratio_getter, ext_no_python, ext_2d_kernel, ext_2d_kernel_weights),
+            compare_backend=compare_backend,
             accept=accept,
             max_cost=max_cost,
             max_calls=max_calls,
