@@ -7,6 +7,7 @@ from warnings import warn
 from .chunk import Diff, Chunk
 from .myers import search_graph_recursive as pymyers, MAX_COST, MAX_CALLS, MIN_RATIO
 from .cython.cmyers import search_graph_recursive as cmyers
+from .cython.protocols import wrap
 
 _nested_containers = (list, tuple)
 
@@ -95,8 +96,7 @@ def diff(
         If True, ensures that the returned diff either satisfies both
         min_ratio and max_cost or otherwise has a zero ratio.
     ext_no_python
-        If True will disallow slow python-based comparison protocols
-        (c kernel only).
+        If True will disallow slow python-based comparison protocols.
     ext_2d_kernel
         If True, will enable fast kernels computing ratios for 2D
         numpy inputs with matching trailing dimension.
@@ -148,15 +148,17 @@ def diff(
     cost = _kernel(
         n=n,
         m=m,
-        similarity_ratio_getter=eq,
+        comparison_backend=wrap(
+            data=eq,
+            allow_python=not ext_no_python,
+            allow_k2d=ext_2d_kernel,
+            k2d_weights=ext_2d_kernel_weights,
+        ),
         accept=accept,
         max_cost=max_cost,
         eq_only=eq_only,
         max_calls=max_calls,
         out=codes,
-        ext_no_python=ext_no_python,
-        ext_2d_kernel=ext_2d_kernel,
-        ext_2d_kernel_weights=ext_2d_kernel_weights,
     )
 
     if strict and cost > max_cost:

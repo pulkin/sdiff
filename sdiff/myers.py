@@ -17,32 +17,6 @@ MAX_CALLS = 0xFFFFFFFF  # maximal calls
 MIN_RATIO = 0.749  # minimal similarity ratio
 
 
-def _get_getter(
-        similarity_ratio_getter: Callable[[int, int], float],
-        ext_2d_kernel: bool = False,
-        ext_2d_kernel_weights: Optional[Sequence[float]] = None,
-) -> Callable[[int, int], float]:
-
-    if isinstance(similarity_ratio_getter, tuple):
-        _a, _b = similarity_ratio_getter
-
-        if ext_2d_kernel and np is not None and isinstance(_a, np.ndarray) and isinstance(_b, np.ndarray) and _a.ndim == 2 and _b.ndim == 2:
-            assert _a.shape[1] == _b.shape[1], "2D extension: arrays a and b have different shape[1]"
-            if ext_2d_kernel_weights is not None:
-                ext_2d_kernel_weights = np.ascontiguousarray(ext_2d_kernel_weights, dtype=float)
-            else:
-                ext_2d_kernel_weights = np.ones(_a.shape[1])
-            assert ext_2d_kernel_weights.shape == (_a.shape[1],), "2D extensions: weights do not match the trailing dimension of a and b"
-
-            def similarity_ratio_getter(_i: int, _j: int, _n: int = _a.shape[1], _weights=ext_2d_kernel_weights) -> float:
-                return ((_a[_i] == _b[_j]) * _weights).sum() / _n
-
-        else:
-            def similarity_ratio_getter(_i: int, _j: int) -> float:
-                return _a[_i] == _b[_j]
-    return similarity_ratio_getter
-
-
 def _get_diag_index(diag: int, nm: int) -> int:
     """Computes the index of a given diagonal"""
     return (diag // 2) % nm
@@ -170,15 +144,12 @@ def _do_branch(
 def search_graph_recursive(
         n: int,
         m: int,
-        similarity_ratio_getter: Callable[[int, int], float],
+        comparison_backend: Callable[[int, int], float],
         out: array = None,
         accept: float = 1,
         max_cost: int = MAX_COST,
         max_calls: int = MAX_CALLS,
         eq_only: bool = False,
-        ext_no_python: bool = False,
-        ext_2d_kernel: bool = False,
-        ext_2d_kernel_weights: Optional[Sequence[float]]=None,
         i: int = 0,
         j: int = 0,
 ) -> int:
@@ -200,7 +171,7 @@ def search_graph_recursive(
         The length of the first sequence.
     m
         The length of the second sequence.
-    similarity_ratio_getter
+    comparison_backend
         A callable(i, j) telling the similarity ratio between
         element i of the first sequence and element j
         of the second sequence.
@@ -233,14 +204,6 @@ def search_graph_recursive(
         Note that without specifying max_cost explicitly
         setting eq_only=True will return almost instantly as
         the default value of max_cost is very large.
-    ext_no_python
-        If True will disallow slow python-based comparison protocols
-        (c kernel only).
-    ext_2d_kernel
-        If True, will enable fast kernels computing ratios for 2D
-        numpy inputs with matching trailing dimension.
-    ext_2d_kernel_weights
-        Optional weights for the above.
     i, j
         Offsets for calling similarity_ratio_getter and
         writing the edit script.
@@ -250,16 +213,8 @@ def search_graph_recursive(
     The diff cost: the number of deletions + the number
     of additions.
     """
-    if ext_no_python:
-        raise ValueError("cannot set no_python in py kernel")
     if eq_only and out is not None:
         warnings.warn("the 'out' argument is ignored for eq_only=True")
-
-    similarity_ratio_getter = _get_getter(
-        similarity_ratio_getter,
-        ext_2d_kernel=ext_2d_kernel,
-        ext_2d_kernel_weights=ext_2d_kernel_weights,
-    )
 
     n_calls = 2  # takes into account additional calls in the two loops below
     max_cost = min(max_cost, n + m)
@@ -271,7 +226,7 @@ def search_graph_recursive(
     # preventing the possibility of an infinite recursion
 
     # forward
-    while n * m > 0 and similarity_ratio_getter(i, j) >= accept:
+    while n * m > 0 and comparison_backend(i, j) >= accept:
         n_calls += 1
         ix = i + j
         if out is not None:
@@ -283,7 +238,7 @@ def search_graph_recursive(
         m -= 1
 
     # ... and reverse
-    while n * m > 0 and similarity_ratio_getter(i + n - 1, j + m - 1) >= accept:
+    while n * m > 0 and comparison_backend(i + n - 1, j + m - 1) >= accept:
         n_calls += 1
         ix = i + j + n + m - 2
         if out is not None:
@@ -411,7 +366,7 @@ def search_graph_recursive(
             # slide down the progress coordinate
             while 0 <= x < n and 0 <= y < m:
                 n_calls += 1
-                if similarity_ratio_getter(x + i, y + j) < accept:
+                if comparison_backend(x + i, y + j) < accept:
                     break
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
@@ -454,7 +409,7 @@ def search_graph_recursive(
                         search_graph_recursive(
                             n=x,
                             m=y,
-                            similarity_ratio_getter=similarity_ratio_getter,
+                            comparison_backend=comparison_backend,
                             out=out,
                             accept=accept,
                             max_cost=cost // 2 + cost % 2,
@@ -464,7 +419,7 @@ def search_graph_recursive(
                         search_graph_recursive(
                             n=n - x2,
                             m=m - y2,
-                            similarity_ratio_getter=similarity_ratio_getter,
+                            comparison_backend=comparison_backend,
                             out=out,
                             accept=accept,
                             max_cost=cost // 2,

@@ -1,10 +1,11 @@
 import array
-from random import choice, randint, seed
+from random import randint, seed
 
 import pytest
 
 from sdiff.myers import search_graph_recursive
 from sdiff.cython.cmyers import search_graph_recursive as csearch_graph_recursive
+from sdiff.cython.compare import ComparisonCallBackend, ComparisonStrBackend
 from sdiff.sequence import canonize
 
 
@@ -16,11 +17,11 @@ def compute_cost(codes):
 @pytest.mark.parametrize("n, m", [(1, 1), (2, 2), (7, 4), (7, 7)])
 @pytest.mark.parametrize("v", [0, 1])
 def test_empty_full(driver, n, m, v):
-    def complicated_graph(i: int, j: int) -> float:
+    def graph(i: int, j: int) -> float:
         return v
 
     result = array.array('b', b'\xFF' * (n + m))
-    cost = driver(n, m, complicated_graph, result)
+    cost = driver(n, m, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     if v == 0:
         assert cost == n + m
@@ -32,11 +33,11 @@ def test_empty_full(driver, n, m, v):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_impl_quantized_1(driver):
-    def complicated_graph(i: int, j: int) -> float:
+    def graph(i: int, j: int) -> float:
         return i == 2 * j
 
     result = array.array('b', b'\xFF' * 11)
-    cost = driver(7, 4, complicated_graph, result)
+    cost = driver(7, 4, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 3
     canonize(result)
@@ -45,11 +46,11 @@ def test_impl_quantized_1(driver):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_impl_dummy_1(driver):
-    def complicated_graph(i: int, j: int) -> float:
+    def graph(i: int, j: int) -> float:
         return i == j and i % 2
 
     result = array.array('b', b'\xFF' * 11)
-    cost = driver(7, 4, complicated_graph, result)
+    cost = driver(7, 4, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 7
     canonize(result)
@@ -58,11 +59,11 @@ def test_impl_dummy_1(driver):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_impl_dummy_2(driver):
-    def complicated_graph(i: int, j: int) -> float:
+    def graph(i: int, j: int) -> float:
         return i == j and i % 2
 
     result = array.array('b', b'\xFF' * 11)
-    cost = driver(4, 7, complicated_graph, result)
+    cost = driver(4, 7, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 7
     canonize(result)
@@ -75,11 +76,11 @@ def test_impl_dummy_2(driver):
 ])
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_max_cost_quantized(driver, max_cost, expected_cost, expected):
-    def complicated_graph(i: int, j: int) -> float:
+    def graph(i: int, j: int) -> float:
         return i == 2 * j
 
     result = array.array('b', b'\xFF' * 11)
-    cost = driver(7, 4, complicated_graph, result, max_cost=max_cost)
+    cost = driver(7, 4, ComparisonCallBackend(graph), result, max_cost=max_cost)
     assert compute_cost(result) == cost
     assert cost == expected_cost
     canonize(result)
@@ -90,14 +91,14 @@ def test_max_cost_quantized(driver, max_cost, expected_cost, expected):
 def test_eq_only(driver):
     result = array.array('b', b'\xFF' * 18)
     with pytest.warns(UserWarning, match="the 'out' argument is ignored for eq_only=True"):
-        cost = driver(9, 9, ("aaabbbccc", "aaaxxxccc"), result, eq_only=True, max_cost=8)
+        cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "aaaxxxccc"), result, eq_only=True, max_cost=8)
     assert cost == 6
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_str_non_periodic(driver):
     result = array.array('b', b'\xFF' * 18)
-    cost = driver(9, 9, ("aaabbbccc", "dddbbbeee"), result)
+    cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "dddbbbeee"), result)
     assert compute_cost(result) == cost
     assert cost == 12
     canonize(result)
@@ -107,7 +108,7 @@ def test_str_non_periodic(driver):
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_str_non_periodic_2(driver):
     result = array.array('b', b'\xFF' * 18)
-    cost = driver(9, 9, ("aaabbbccc", "aaadddccc"), result)
+    cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "aaadddccc"), result)
     assert compute_cost(result) == cost
     assert cost == 6
     canonize(result)
@@ -118,8 +119,8 @@ def test_str_non_periodic_2(driver):
 def test_max_calls(driver):
     a = "_0aaa1_"
     b = "_2aaa3_"
-    assert driver(len(a), len(b), (a, b)) == 4
-    assert driver(len(a), len(b), (a, b), max_calls=2) == 10
+    assert driver(len(a), len(b), ComparisonStrBackend(a, b)) == 4
+    assert driver(len(a), len(b), ComparisonStrBackend(a, b), max_calls=2) == 10
 
 
 def check_codes_valid(eq, codes, n, m):
@@ -148,88 +149,22 @@ def check_code_valid_seq(a, b, codes):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 @pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_call(driver, rtn_diff):
-    for s in range(100):
+def test_fuzz(driver, rtn_diff):
+    for s in range(400):
         seed(s)
         n = randint(10, 100)
         m = randint(10, 100)
         f = randint(0, 100)
         _map = {(x, y): randint(0, 99) < f for x in range(n) for y in range(m)}
 
-        def compare(i, j):
+        def graph(i, j):
             return _map[i, j]
 
         if rtn_diff:
             result = array.array('b', b'\xFF' * (n + m))
         else:
             result = None
-        cost = driver(n, m, compare, result)
+        cost = driver(n, m, ComparisonCallBackend(graph), result)
         if rtn_diff:
             assert compute_cost(result) == cost
-            check_codes_valid(compare, result, n, m)
-
-
-@pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_str(driver, rtn_diff):
-    for s in range(100, 200):
-        seed(s)
-        n = randint(10, 100)
-        m = randint(10, 100)
-        f = randint(0, 100)
-        choices = "a" * (100 - f) + "c" * f
-        a = ''.join(choice(choices) for _ in range(n))
-        b = ''.join(choice(choices) for _ in range(m))
-
-        if rtn_diff:
-            result = array.array('b', b'\xFF' * (n + m))
-        else:
-            result = None
-        cost = driver(n, m, (a, b), result)
-        if rtn_diff:
-            assert compute_cost(result) == cost
-            check_code_valid_seq(a, b, result)
-
-
-@pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_array(driver, rtn_diff):
-    for s in range(200, 300):
-        seed(s)
-        n = randint(10, 100)
-        m = randint(10, 100)
-        f = randint(0, 100)
-        choices = [0] * (100 - f) + [1] * f
-        a = array.array('q', [choice(choices) for _ in range(n)])
-        b = array.array('q', [choice(choices) for _ in range(m)])
-
-        if rtn_diff:
-            result = array.array('b', b'\xFF' * (n + m))
-        else:
-            result = None
-        cost = driver(n, m, (a, b), result)
-        if rtn_diff:
-            assert compute_cost(result) == cost
-            check_code_valid_seq(a, b, result)
-
-
-@pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
-@pytest.mark.parametrize("rtn_diff", [False, True])
-def test_fuzz_list(driver, rtn_diff):
-    for s in range(300, 400):
-        seed(s)
-        n = randint(10, 100)
-        m = randint(10, 100)
-        f = randint(0, 100)
-        choices = "a" * (100 - f) + "c" * f
-        a = [choice(choices) for _ in range(n)]
-        b = [choice(choices) for _ in range(m)]
-
-        if rtn_diff:
-            result = array.array('b', b'\xFF' * (n + m))
-        else:
-            result = None
-        cost = driver(n, m, (a, b), result)
-        if rtn_diff:
-            assert compute_cost(result) == cost
-            check_code_valid_seq(a, b, result)
+            check_codes_valid(graph, result, n, m)

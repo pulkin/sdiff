@@ -1,7 +1,6 @@
 # cython: language_level=3
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from .compare cimport ComparisonBackend
-from .protocols import wrap
 
 import array
 import cython
@@ -143,7 +142,7 @@ cdef inline void _do_branch(
 cdef Py_ssize_t _search_graph_recursive(
     Py_ssize_t n,
     Py_ssize_t m,
-    ComparisonBackend compare_backend,
+    ComparisonBackend comparison_backend,
     const double accept,
     Py_ssize_t max_cost,
     Py_ssize_t max_calls,
@@ -165,7 +164,7 @@ cdef Py_ssize_t _search_graph_recursive(
 
     # strip matching ends of the sequence
     # forward
-    while n * m > 0 and compare_backend.compare(i, j) >= accept:
+    while n * m > 0 and comparison_backend.compare(i, j) >= accept:
         n_calls += 1
         ix = i + j
         if rtn_script:
@@ -176,7 +175,7 @@ cdef Py_ssize_t _search_graph_recursive(
         n -= 1
         m -= 1
     # ... and reverse
-    while n * m > 0 and compare_backend.compare(i + n - 1, j + m - 1) >= accept:
+    while n * m > 0 and comparison_backend.compare(i + n - 1, j + m - 1) >= accept:
         n_calls += 1
         ix = i + j + n + m - 2
         if rtn_script:
@@ -238,7 +237,7 @@ cdef Py_ssize_t _search_graph_recursive(
             # slide down the progress coordinate
             while 0 <= x < n and 0 <= y < m:
                 n_calls += 1
-                if compare_backend.compare(x + i, y + j) < accept:
+                if comparison_backend.compare(x + i, y + j) < accept:
                     break
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
@@ -285,7 +284,7 @@ cdef Py_ssize_t _search_graph_recursive(
                         _search_graph_recursive(
                             n=x,
                             m=y,
-                            compare_backend=compare_backend,
+                            comparison_backend=comparison_backend,
                             accept=accept,
                             max_cost=cost // 2 + cost % 2,
                             max_calls=max_calls,
@@ -299,7 +298,7 @@ cdef Py_ssize_t _search_graph_recursive(
                         _search_graph_recursive(
                             n=n - x2,
                             m=m - y2,
-                            compare_backend=compare_backend,
+                            comparison_backend=comparison_backend,
                             accept=accept,
                             max_cost=cost // 2,
                             max_calls=max_calls,
@@ -339,7 +338,7 @@ _null_script = array.array('b', b'')
 def search_graph_recursive(
     Py_ssize_t n,
     Py_ssize_t m,
-    similarity_ratio_getter,
+    ComparisonBackend comparison_backend,
     out=None,
     double accept=1,
     Py_ssize_t max_cost=0xFFFFFFFF,
@@ -347,9 +346,6 @@ def search_graph_recursive(
     char eq_only=0,
     Py_ssize_t i=0,
     Py_ssize_t j=0,
-    int ext_no_python=0,
-    int ext_2d_kernel=0,
-    ext_2d_kernel_weights=None,
 ) -> int:
     """See the description of the pure-python implementation."""
     cdef:
@@ -357,7 +353,6 @@ def search_graph_recursive(
         Py_ssize_t nm = min(n, m) + 1
         Py_ssize_t* buffer = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * nm)
         Py_ssize_t* buffer2 = <Py_ssize_t *>PyMem_Malloc(2 * sizeof(Py_ssize_t) * 2)
-        ComparisonBackend compare_backend
 
     if out is None:
         cout = _null_script
@@ -367,11 +362,10 @@ def search_graph_recursive(
             warn("the 'out' argument is ignored for eq_only=True")
 
     try:
-        compare_backend = wrap(similarity_ratio_getter, allow_python=not ext_no_python, allow_k2d=ext_2d_kernel, k2d_weights=ext_2d_kernel_weights)
         return _search_graph_recursive(
             n=n,
             m=m,
-            compare_backend=compare_backend,
+            comparison_backend=comparison_backend,
             accept=accept,
             max_cost=max_cost,
             max_calls=max_calls,
