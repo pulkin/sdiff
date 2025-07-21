@@ -1,6 +1,6 @@
 import array
 
-from .compare import (
+from .cython.compare import (
     ComparisonBackend,
     ComparisonCallBackend,
     ComparisonPythonBackend,
