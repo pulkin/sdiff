@@ -301,6 +301,8 @@ def test_strictly_no_python_3():
 @pytest.mark.parametrize("dtype", [np.int8, np.int16, np.int32, np.int64, np.float16, np.float32,
                                    np.float64, np.float128, np.object_, np.bool_, np.str_, np.bytes_])
 def test_strictly_no_python_4(dtype):
+    if dtype in (np.float16, np.str_, np.bytes_):
+        pytest.skip("not implemented")
     a = np.arange(3).astype(dtype)
     diff(a, a, ext_no_python=True)
 

@@ -5,8 +5,12 @@ import pytest
 
 from sdiff.myers import search_graph_recursive
 from sdiff.cython.cmyers import search_graph_recursive as csearch_graph_recursive
-from sdiff.cython.compare import ComparisonCallBackend, ComparisonStrBackend
+from sdiff.protocols import wrap
 from sdiff.sequence import canonize
+
+#TODO: refactor
+ComparisonCallBackend = type(wrap(None))
+ComparisonStrBackend = type(wrap(("abc", "def")))
 
 
 def compute_cost(codes):

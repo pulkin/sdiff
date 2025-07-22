@@ -1,5 +1,6 @@
 import pytest
 from array import array
+import numpy as np
 
 from sdiff.protocols import wrap
 
@@ -46,5 +47,14 @@ def test_buffer_protocol(typecode):
         array(typecode, [0, 1, 2]),
         array(typecode, [2, 3]),
     ))
+    assert comparison_backend(0, 0) == 0
+    assert comparison_backend(2, 0) == 1
+
+
+def test_buffer_protocol_2d():
+    comparison_backend = wrap((
+        np.array([[0, .5], [1, 1.5], [2, 2.5]]),
+        np.array([[2, 2.5], [3, 3.5]]),
+    ), allow_k2d=True)
     assert comparison_backend(0, 0) == 0
     assert comparison_backend(2, 0) == 1
