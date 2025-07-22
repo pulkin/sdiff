@@ -1,9 +1,8 @@
 import os
 import sys
 
-from distutils.core import Distribution, Extension
+from setuptools import Extension
 
-import Cython
 from Cython.Build.Dependencies import cythonize
 from Cython.Build.Cache import get_cython_cache_dir
 
@@ -14,6 +13,26 @@ def build_inline_module(code,
                   lib_dir=os.path.join(get_cython_cache_dir(), 'inline'),
                   cython_include_dirs=None, cython_compiler_directives=None,
                   force=False, quiet=False, annotate=False, language_level=None):
+    """
+    Builds an inline module.
+
+    Adapted from cython.
+
+    Parameters
+    ----------
+    code
+    lib_dir
+    cython_include_dirs
+    cython_compiler_directives
+    force
+    quiet
+    annotate
+    language_level
+
+    Returns
+    -------
+
+    """
 
     cython_compiler_directives = dict(cython_compiler_directives) if cython_compiler_directives else {}
     if language_level is None and 'language_level' not in cython_compiler_directives:
