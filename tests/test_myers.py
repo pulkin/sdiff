@@ -1,16 +1,29 @@
 import array
 from random import randint, seed
+import numpy as np
 
 import pytest
 
 from sdiff.myers import search_graph_recursive
 from sdiff.cython.cmyers import search_graph_recursive as csearch_graph_recursive
+from sdiff.cython.tools import build_inline_module
 from sdiff.protocols import wrap
 from sdiff.sequence import canonize
 
 #TODO: refactor
 ComparisonCallBackend = type(wrap(None))
 ComparisonStrBackend = type(wrap(("abc", "def")))
+MapBackend = build_inline_module(
+    """
+    from sdiff.cython.compare cimport ComparisonBackend
+    cdef class Backend(ComparisonBackend):
+      cdef const unsigned char[:, :] map
+      def __init__(self, const unsigned char[:, :] map):
+        self.map = map
+      cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+        return self.map[i, j]
+    """
+).Backend
 
 
 def compute_cost(codes):
@@ -159,16 +172,13 @@ def test_fuzz(driver, rtn_diff):
         n = randint(10, 100)
         m = randint(10, 100)
         f = randint(0, 100)
-        _map = {(x, y): randint(0, 99) < f for x in range(n) for y in range(m)}
-
-        def graph(i, j):
-            return _map[i, j]
+        _map = np.random.randint(0, 99, size=(n, m)) < f
 
         if rtn_diff:
             result = array.array('b', b'\xFF' * (n + m))
         else:
             result = None
-        cost = driver(n, m, ComparisonCallBackend(graph), result)
+        cost = driver(n, m, MapBackend(_map), result)
         if rtn_diff:
             assert compute_cost(result) == cost
-            check_codes_valid(graph, result, n, m)
+            check_codes_valid(lambda i, j: _map[i, j], result, n, m)
