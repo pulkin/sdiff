@@ -9,6 +9,8 @@ cdef class ComparisonBackend:
 
 
 cdef class ComparisonCallBackend(ComparisonBackend):
+    cdef object callable
+
     def __init__(self, object o):
         self.callable = o
 
@@ -17,6 +19,9 @@ cdef class ComparisonCallBackend(ComparisonBackend):
 
 
 cdef class ComparisonPythonBackend(ComparisonBackend):
+    cdef object a
+    cdef object b
+
     def __init__(self, object a, object b):
         self.a = a
         self.b = b
@@ -26,6 +31,9 @@ cdef class ComparisonPythonBackend(ComparisonBackend):
 
 
 cdef class ComparisonStrBackend(ComparisonBackend):
+    cdef unicode a
+    cdef unicode b
+
     def __init__(self, object a, object b):
         self.a = a
         self.b = b
@@ -35,6 +43,9 @@ cdef class ComparisonStrBackend(ComparisonBackend):
 
 
 cdef class ComparisonBufferBackend(ComparisonBackend):
+    cdef const char[:, :] a
+    cdef const char[:, :] b
+
     def __init__(self, const char[:, :] a, const char[:, :] b):
         assert a.shape[1] == b.shape[1]
         self.a = a
@@ -50,6 +61,10 @@ cdef class ComparisonBufferBackend(ComparisonBackend):
 
 
 cdef class ComparisonBufferBackend2D(ComparisonBackend):
+    cdef const char[:, :, :] a
+    cdef const char[:, :, :] b
+    cdef const double[:] weights
+
     def __init__(self, const char[:, :, :] a, const char[:, :, :] b, const double[:] weights):
         assert a.shape[2] == b.shape[2]
         assert a.shape[1] == b.shape[1]
