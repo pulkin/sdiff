@@ -63,10 +63,6 @@ def wrap(data, allow_python: bool = True, **kwargs):
     allow_python
         If set to True, will allow (slow) python kernels for
         comparing python lists, etc.
-    allow_k2d
-        If set to True, will allow 2D numpy array kernel.
-    k2d_weights
-        Optional weights for the previous.
     kwargs
         Build arguments.
 

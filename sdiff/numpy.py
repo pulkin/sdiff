@@ -521,7 +521,7 @@ def diff_aligned_2d(
             max_cost=max_cost_here,
             max_calls=max_calls_here,
             kernel=kernel,
-            ext_no_python=True,
+            no_python=True,
         )
         row_diff_sig = raw_diff.signature
 

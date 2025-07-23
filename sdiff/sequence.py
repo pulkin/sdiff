@@ -39,7 +39,7 @@ def diff(
         rtn_diff: Union[bool, array] = True,
         dig=None,
         strict: bool = True,
-        ext_no_python: bool = False,
+        no_python: bool = False,
 ) -> Diff:
     """
     Computes a diff between sequences.
@@ -93,7 +93,7 @@ def diff(
     strict
         If True, ensures that the returned diff either satisfies both
         min_ratio and max_cost or otherwise has a zero ratio.
-    ext_no_python
+    no_python
         If True will disallow slow python-based comparison protocols.
 
     Returns
@@ -136,7 +136,7 @@ def diff(
         m=m,
         comparison_backend=wrap(
             data=eq,
-            allow_python=not ext_no_python,
+            allow_python=not no_python,
         ),
         accept=accept,
         max_cost=max_cost,
