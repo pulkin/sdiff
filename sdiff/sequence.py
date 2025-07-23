@@ -30,7 +30,7 @@ def diff(
         a: Sequence[object],
         b: Sequence[object],
         eq=None,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
         accept: float = MIN_RATIO,
         min_ratio: float = MIN_RATIO,
         max_cost: int = MAX_COST,
@@ -58,8 +58,8 @@ def diff(
         - a pair of sequences ``(a_, b_)`` substituting the input sequences
           when computing the diff. The returned chunks, however, are still
           composed of elements from a and b.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     accept
         The lower threshold for the equality measure.
@@ -141,7 +141,7 @@ def diff(
         comparison_backend=wrap(
             data=eq,
             allow_python=not no_python,
-            e_abs=e_abs,
+            atol=atol,
         ),
         accept=accept,
         max_cost=max_cost,
@@ -266,7 +266,7 @@ def diff_nested(
         a,
         b,
         eq=None,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
         min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
         max_cost: Union[int, tuple[int, ...]] = MAX_COST,
         max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
@@ -291,8 +291,8 @@ def diff_nested(
         An optional pair of sequences ``(a_, b_)`` substituting the input
         sequences when computing the diff. The returned chunks, however, are
         still composed of elements from a and b.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
@@ -352,7 +352,7 @@ def diff_nested(
             a,
             b,
             eq=eq,
-            e_abs=e_abs,
+            atol=atol,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
             max_calls=max_calls_here,
@@ -374,7 +374,7 @@ def diff_nested(
                     a=a[i],
                     b=b[j],
                     eq=(a_[i], b_[j]),
-                    e_abs=e_abs,
+                    atol=atol,
                     min_ratio=min_ratio_pass,
                     max_cost=max_cost_pass,
                     max_calls=max_calls_pass,
@@ -392,7 +392,7 @@ def diff_nested(
                         a=a[i],
                         b=b[j],
                         eq=(a_[i], b_[j]),
-                        e_abs=e_abs,
+                        atol=atol,
                         min_ratio=min_ratio_pass,
                         max_cost=max_cost_pass,
                         max_calls=max_calls_pass,
@@ -426,7 +426,7 @@ def diff_nested(
         a=a,
         b=b,
         eq=_eq,
-        e_abs=e_abs,
+        atol=atol,
         accept=accept,
         min_ratio=min_ratio_here,
         max_cost=max_cost_here,

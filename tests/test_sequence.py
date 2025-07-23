@@ -390,7 +390,7 @@ def test_e_abs(kernel, arr):
     if arr:
         a = array(arr, a)
         b = array(arr, b)
-    assert diff(a, b, e_abs=0.2, kernel=kernel) == Diff(
+    assert diff(a, b, atol=0.2, kernel=kernel) == Diff(
         ratio=.75,
         diffs=[
             Chunk(data_a=a[:2], data_b=b[:2], eq=True),

@@ -16,7 +16,7 @@ def diff(
         a,
         b,
         eq=None,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
         max_calls: Union[int, tuple[int]] = MAX_CALLS,
@@ -37,8 +37,8 @@ def diff(
         An optional pair of tensors ``(a_, b_)`` substituting the input
         tensors when computing the diff. The returned chunks, however, are
         still composed of elements from a and b.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
@@ -82,7 +82,7 @@ def diff(
         a=a,
         b=b,
         eq=eq,
-        e_abs=e_abs,
+        atol=atol,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -176,7 +176,7 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
 def get_row_col_diff(
         a: np.ndarray,
         b: np.ndarray,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
         max_calls: Union[int, tuple[int]] = MAX_CALLS,
@@ -196,8 +196,8 @@ def get_row_col_diff(
         The first matrix.
     b
         The second matrix.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
@@ -229,7 +229,7 @@ def get_row_col_diff(
     base_diff = diff(
         a=a,
         b=b,
-        e_abs=e_abs,
+        atol=atol,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -303,7 +303,7 @@ def get_backend_2d(
         a: np.ndarray,
         b: np.ndarray,
         weights: Optional[np.ndarray] = None,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
 ) -> ComparisonBackend:
     dtype_str_a = dtypes_conversion[memoryview(a).format]
     dtype_str_b = dtypes_conversion[memoryview(b).format]
@@ -316,9 +316,9 @@ def get_backend_2d(
         ("const double[:]", "weights"),
     ]
     init_args = {"a": a, "b": b, "weights": weights}
-    if e_abs is not None:
+    if atol is not None:
         _vars.append(("double", "e_abs"))
-        init_args["e_abs"] = e_abs
+        init_args["e_abs"] = atol
     source_code = [
         *PREAMBLE,
         *compose_init(_vars),
@@ -330,14 +330,14 @@ def get_backend_2d(
         "      Py_ssize_t t",
         "      double result = 0",
     ]
-    if e_abs is not None:
+    if atol is not None:
         source_code.append("      double delta")
     source_code.extend([
         "    if self.weights.shape[0] == 0:",
         "      return 1",
         "    for t in range(self.weights.shape[0]):",
     ])
-    if e_abs is not None:
+    if atol is not None:
         source_code.extend([
             "      delta = self.a[i, t] - self.b[j, t]",
             "      result += ((delta >= -self.e_abs) and (delta <= self.e_abs)) * self.weights[t]",
@@ -454,7 +454,7 @@ def diff_aligned_2d(
         b: np.ndarray,
         fill,
         eq=None,
-        e_abs: Optional[float] = None,
+        atol: Optional[float] = None,
         fill_eq=_undefined,
         min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
         max_cost: Union[int, tuple[int, ...]] = MAX_COST,
@@ -477,8 +477,8 @@ def diff_aligned_2d(
         An optional pair of tensors ``(a_, b_)`` substituting the input
         matrices when computing the diff. The returned chunks, however, are
         still composed of elements from a and b.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     fill_eq
         The empty value to use when filling "eq" matrices.
@@ -554,7 +554,7 @@ def diff_aligned_2d(
         raw_diff = sequence_diff(
             a=a_,
             b=b_,
-            eq=get_backend_2d(a_, b_, mask, e_abs=e_abs),
+            eq=get_backend_2d(a_, b_, mask, atol=atol),
             accept=min_ratio_row,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
@@ -577,7 +577,7 @@ def diff_aligned_2d(
         signatures = get_row_col_diff(
             a=a_,
             b=b_,
-            e_abs=e_abs,
+            atol=atol,
             min_ratio=min_ratio,
             max_cost=max_cost,
             max_calls=max_calls,
@@ -591,10 +591,10 @@ def diff_aligned_2d(
             a_, b_ = a, b
 
     # a, b, a_, b_ are all of the same exact shape starting here
-    if e_abs is None:
+    if atol is None:
         eq_matrix = a_ == b_
     else:
-        eq_matrix = np.abs(a_ - b_) <= e_abs
+        eq_matrix = np.abs(a_ - b_) <= atol
     idx = tuple()
     for dim, sig in enumerate(signatures):
         offset = 0

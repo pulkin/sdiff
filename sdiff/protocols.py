@@ -56,7 +56,7 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
     return source_code
 
 
-def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwargs):
+def wrap(data, allow_python: bool = True, atol: Optional[float] = None, **kwargs):
     """
     Figures out the compare protocol from the argument.
 
@@ -69,8 +69,8 @@ def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwarg
     allow_python
         If set to True, will allow (slow) python kernels for
         comparing python lists, etc.
-    e_abs
-        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
     kwargs
         Build arguments.
@@ -116,12 +116,12 @@ def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwarg
                             (dtype_str_a + "[:]", "a"),
                             (dtype_str_b + "[:]", "b"),
                         ]
-                        if e_abs is not None:
+                        if atol is not None:
                             _vars.append(("double", "e_abs"))
-                            init_args["e_abs"] = e_abs
+                            init_args["e_abs"] = atol
                         source_code.extend(compose_init(_vars))
                         source_code.extend(COMPARE_DEF)
-                        source_code.extend(COMPARE_ABS if e_abs is not None else COMPARE_SIMPLE)
+                        source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
                         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
                     else:
                         raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
@@ -133,12 +133,12 @@ def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwarg
             ("object", "a"),
             ("object", "b"),
         ]
-        if e_abs is not None:
+        if atol is not None:
             _vars.append(("double", "e_abs"))
-            init_args["e_abs"] = e_abs
+            init_args["e_abs"] = atol
         source_code.extend(compose_init(_vars))
         source_code.extend(COMPARE_DEF)
-        source_code.extend(COMPARE_ABS if e_abs is not None else COMPARE_SIMPLE)
+        source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
     else:
         source_code.extend(compose_init([
