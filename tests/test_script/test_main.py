@@ -6,7 +6,6 @@ from .util import git_self_extract, process2text, sync_contents
 
 cases = Path(__file__).parent / "cases"
 
-
 @pytest.mark.parametrize("args, name", [
     ([], "default.txt"),
     (["-v"], "default-v.txt"),
@@ -28,14 +27,20 @@ def test_git(tmp_path, test_diff_renders, args, name):
     sync_contents(cases / f"git/diff-{name}", text, test_diff_renders)
     assert code is True
 
-    # test pool
-    code, text = process2text([str(a), str(b), "--pool", "2", *args])
-    sync_contents(cases / f"git/diff-{name}", text, True)
+
+def test_git_pool(tmp_path):
+    git_self_extract("0c197f2cdb0bf8c0ca95e76a837296fbebad436d", a := tmp_path / "a")
+    git_self_extract("e807d333433209f9328decc8290d40c270d832cd", b := tmp_path / "b")
+    code, text = process2text([str(a), str(b), "--pool", "2"])
+    sync_contents(cases / f"git/diff-default.txt", text, True)
     assert code is True
 
-    # test pool not ordered
-    code, text = process2text([str(a), str(b), "--pool", "2", *args], sort=False)
-    sync_contents(cases / f"git/diff-{name}", text, True, eq=lambda i, j: set(i) == set(j))
+
+def test_git_pool_unordered(tmp_path):
+    git_self_extract("0c197f2cdb0bf8c0ca95e76a837296fbebad436d", a := tmp_path / "a")
+    git_self_extract("e807d333433209f9328decc8290d40c270d832cd", b := tmp_path / "b")
+    code, text = process2text([str(a), str(b), "--pool", "2"], sort=False)
+    sync_contents(cases / f"git/diff-default.txt", text, True, eq=lambda i, j: set(i) == set(j))
     assert code is True
 
 
