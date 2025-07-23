@@ -1,4 +1,5 @@
 import array
+import os
 
 from .cython.tools import build_inline_module
 
@@ -22,7 +23,7 @@ dtypes = {
 }
 
 
-def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=None):
+def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=None, **kwargs):
     """
     Figures out the compare protocol from the argument.
 
@@ -39,24 +40,37 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
         If set to True, will allow 2D numpy array kernel.
     k2d_weights
         Optional weights for the previous.
+    kwargs
+        Build arguments.
 
     Returns
     -------
     The resulting protocol.
     """
+    if "annotate" not in kwargs and os.environ.get("SDIFF_DEBUG"):
+        kwargs["annotate"] = True
     source_code = [
+        "import cython",
         "from sdiff.cython.compare cimport ComparisonBackend",
         "cdef class Backend(ComparisonBackend):",  # required to inherit from the base class
     ]
     simple_compare = [
+        "  @cython.initializedcheck(False)",
+        "  @cython.wraparound(False)",
         "  cdef double compare(self, Py_ssize_t i, Py_ssize_t j):",
         "    return self.a[i] == self.b[j]",
     ]
 
     def _add_fields(fields: list[tuple[str, str]]):
+        def _autofmt(t, n):
+            result = f"{t} {n}"
+            if '[:' in t:
+                result += ' not None'
+            return result
+
         for t, n in fields:
             source_code.append(f"  cdef {t} {n}")
-        source_code.append(f"  def __init__(self, {', '.join(t + ' ' + n for t, n in fields)}):")
+        source_code.append(f"  def __init__(self, {', '.join(_autofmt(t, n) for t, n in fields)}):")
         for _, n in fields:
             source_code.append(f"    self.{n} = {n}")
 
@@ -74,7 +88,7 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
                     ("unicode", "b"),
                 ])
                 source_code.extend(simple_compare)
-                return build_inline_module("\n".join(source_code)).Backend(a, b)
+                return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
             else:
                 try:
                     mem_a = memoryview(a)
@@ -92,7 +106,7 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
                             (dtype_str_b + "[:]", "b"),
                         ])
                         source_code.extend(simple_compare)
-                        return build_inline_module("\n".join(source_code)).Backend(a, b)
+                        return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
                     elif mem_a.ndim == 2 and allow_k2d:
                         if mem_a.shape[1] != mem_b.shape[1]:
                             raise ValueError(f"mismatch of the trailing dimension for 2D extension: {mem_a.shape[1]} != {mem_b.shape[1]}")
@@ -106,6 +120,8 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
                         source_code.extend([
                             "    assert a.shape[1] == b.shape[1]",
                             "    assert a.shape[1] == weights.shape[0]",
+                            "  @cython.initializedcheck(False)",
+                            "  @cython.wraparound(False)",
                             "  cdef double compare(self, Py_ssize_t i, Py_ssize_t j):",
                             "    cdef:",
                             "      Py_ssize_t t",
@@ -114,7 +130,7 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
                             "      result += (self.a[i, t] == self.b[j, t]) * self.weights[t]",
                             "    return result / self.weights.shape[0]",
                         ])
-                        return build_inline_module("\n".join(source_code)).Backend(a, b, k2d_weights)
+                        return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b, k2d_weights)
                     else:
                         raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
 
@@ -126,11 +142,11 @@ def wrap(data, allow_python: bool = True, allow_k2d: bool = False, k2d_weights=N
             ("object", "b"),
         ])
         source_code.extend(simple_compare)
-        return build_inline_module("\n".join(source_code)).Backend(a, b)
+        return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
     else:
         _add_fields([("object", "callable")])
         source_code.extend([
             "  cdef double compare(self, Py_ssize_t i, Py_ssize_t j):",
             "    return self.callable(i, j)",
         ])
-        return build_inline_module("\n".join(source_code)).Backend(data)
+        return build_inline_module("\n".join(source_code), *kwargs).Backend(data)
