@@ -93,8 +93,6 @@ def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwarg
 
         if ta == tb:
             if ta is str:
-                if e_abs is not None:
-                    raise ValueError("cannot use e_abs for str comparison")
                 source_code.extend(compose_init([
                     ("unicode", "a"),
                     ("unicode", "b"),
@@ -143,8 +141,6 @@ def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwarg
         source_code.extend(COMPARE_ABS if e_abs is not None else COMPARE_SIMPLE)
         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
     else:
-        if e_abs is not None:
-            raise ValueError("cannot use e_abs for callables")
         source_code.extend(compose_init([
             ("object", "callable"),
         ]))

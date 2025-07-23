@@ -95,6 +95,30 @@ def test_row_col_sig_row(a):
     )
 
 
+def test_row_col_sig_row_atol_0(a):
+    b = a.copy()
+    b[4] += 1
+    assert get_row_col_diff(a, b, e_abs=0.5) == (
+        Signature(parts=(
+            ChunkSignature(4, 4, True),
+            ChunkSignature(1, 1, False),
+            ChunkSignature(5, 5, True),
+        )),
+        Signature(parts=(
+            ChunkSignature(10, 10, True),
+        )),
+    )
+
+
+def test_row_col_sig_row_atol_1(a):
+    b = a.copy()
+    b[4] += 1
+    assert get_row_col_diff(a, b, e_abs=1.5) == (
+        Signature(parts=(ChunkSignature(10, 10, True),)),
+        Signature(parts=(ChunkSignature(10, 10, True),)),
+    )
+
+
 def test_row_col_sig_col(a):
     b = a.copy()
     b[:, 4] += 1
@@ -107,6 +131,30 @@ def test_row_col_sig_col(a):
             ChunkSignature(1, 1, False),
             ChunkSignature(5, 5, True),
         )),
+    )
+
+
+def test_row_col_sig_col_atol_0(a):
+    b = a.copy()
+    b[:, 4] += 1
+    assert get_row_col_diff(a, b, e_abs=0.5) == (
+        Signature(parts=(
+            ChunkSignature(10, 10, True),
+        )),
+        Signature(parts=(
+            ChunkSignature(4, 4, True),
+            ChunkSignature(1, 1, False),
+            ChunkSignature(5, 5, True),
+        )),
+    )
+
+
+def test_row_col_sig_col_atol_1(a):
+    b = a.copy()
+    b[:, 4] += 1
+    assert get_row_col_diff(a, b, e_abs=1.5) == (
+        Signature(parts=(ChunkSignature(10, 10, True),)),
+        Signature(parts=(ChunkSignature(10, 10, True),)),
     )
 
 
@@ -175,6 +223,32 @@ def test_diff_aligned_2d_same_1(monkeypatch, a):
         eq=mask,
         row_diff_sig=Signature.aligned(10),
         col_diff_sig=col_diff_sig,
+    )
+
+
+@pytest.mark.parametrize("col_diff_sig", [None, Signature(parts=(ChunkSignature(10, 10, True),))])
+def test_diff_aligned_2d_atol_0(monkeypatch, a, a1, col_diff_sig):
+    monkeypatch.setattr(NumpyDiff, "__eq__", np_raw_diff_eq)
+
+    assert diff_aligned_2d(a, a1, 0, col_diff_sig=col_diff_sig, e_abs=0.5) == NumpyDiff(
+        a=a,
+        b=a1,
+        eq=(a == a1),
+        row_diff_sig=Signature.aligned(10),
+        col_diff_sig=Signature.aligned(10),
+    )
+
+
+@pytest.mark.parametrize("col_diff_sig", [None, Signature(parts=(ChunkSignature(10, 10, True),))])
+def test_diff_aligned_2d_atol_1(monkeypatch, a, a1, col_diff_sig):
+    monkeypatch.setattr(NumpyDiff, "__eq__", np_raw_diff_eq)
+
+    assert diff_aligned_2d(a, a1, 0, col_diff_sig=col_diff_sig, e_abs=1.5) == NumpyDiff(
+        a=a,
+        b=a1,
+        eq=np.ones_like(a, dtype=bool),
+        row_diff_sig=Signature.aligned(10),
+        col_diff_sig=Signature.aligned(10),
     )
 
 

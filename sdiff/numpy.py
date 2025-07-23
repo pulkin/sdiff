@@ -16,6 +16,7 @@ def diff(
         a,
         b,
         eq=None,
+        e_abs: Optional[float] = None,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
         max_calls: Union[int, tuple[int]] = MAX_CALLS,
@@ -36,6 +37,9 @@ def diff(
         An optional pair of tensors ``(a_, b_)`` substituting the input
         tensors when computing the diff. The returned chunks, however, are
         still composed of elements from a and b.
+    e_abs
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+        instead of the equality comparison ``a[i] == b[j]``.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -78,6 +82,7 @@ def diff(
         a=a,
         b=b,
         eq=eq,
+        e_abs=e_abs,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -171,6 +176,7 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
 def get_row_col_diff(
         a: np.ndarray,
         b: np.ndarray,
+        e_abs: Optional[float] = None,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
         max_calls: Union[int, tuple[int]] = MAX_CALLS,
@@ -190,6 +196,9 @@ def get_row_col_diff(
         The first matrix.
     b
         The second matrix.
+    e_abs
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+        instead of the equality comparison ``a[i] == b[j]``.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -220,6 +229,7 @@ def get_row_col_diff(
     base_diff = diff(
         a=a,
         b=b,
+        e_abs=e_abs,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -289,19 +299,29 @@ def align_inflate(a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int) -
     return result_a, result_b
 
 
-def get_backend_2d(a: np.ndarray, b: np.ndarray, weights: Optional[np.ndarray] = None) -> ComparisonBackend:
+def get_backend_2d(
+        a: np.ndarray,
+        b: np.ndarray,
+        weights: Optional[np.ndarray] = None,
+        e_abs: Optional[float] = None,
+) -> ComparisonBackend:
     dtype_str_a = dtypes_conversion[memoryview(a).format]
     dtype_str_b = dtypes_conversion[memoryview(b).format]
     if weights is None:
         weights = np.ones(a.shape[1], dtype=float)
     weights = np.asanyarray(weights, dtype=float)
-    return build_inline_module("\n".join([
+    _vars = [
+        (dtype_str_a + "[:, :]", "a"),
+        (dtype_str_b + "[:, :]", "b"),
+        ("const double[:]", "weights"),
+    ]
+    init_args = {"a": a, "b": b, "weights": weights}
+    if e_abs is not None:
+        _vars.append(("double", "e_abs"))
+        init_args["e_abs"] = e_abs
+    source_code = [
         *PREAMBLE,
-        *compose_init([
-            (dtype_str_a + "[:, :]", "a"),
-            (dtype_str_b + "[:, :]", "b"),
-            ("const double[:]", "weights"),
-        ]),
+        *compose_init(_vars),
         "    assert a.shape[1] == b.shape[1]",
         "    assert a.shape[1] == weights.shape[0]",
         "  @cython.cdivision(True)",
@@ -309,12 +329,27 @@ def get_backend_2d(a: np.ndarray, b: np.ndarray, weights: Optional[np.ndarray] =
         "    cdef:",
         "      Py_ssize_t t",
         "      double result = 0",
+    ]
+    if e_abs is not None:
+        source_code.append("      double delta")
+    source_code.extend([
         "    if self.weights.shape[0] == 0:",
         "      return 1",
         "    for t in range(self.weights.shape[0]):",
-        "      result += (self.a[i, t] == self.b[j, t]) * self.weights[t]",
-        "    return result / self.weights.shape[0]",
-    ])).Backend(a, b, weights)
+    ])
+    if e_abs is not None:
+        source_code.extend([
+            "      delta = self.a[i, t] - self.b[j, t]",
+            "      result += ((delta >= -self.e_abs) and (delta <= self.e_abs)) * self.weights[t]",
+        ])
+    else:
+        source_code.append(
+            "      result += (self.a[i, t] == self.b[j, t]) * self.weights[t]"
+        )
+    source_code.append(
+        "    return result / self.weights.shape[0]"
+    )
+    return build_inline_module("\n".join(source_code)).Backend(**init_args)
 
 
 class NumpyDiff(NamedTuple):
@@ -419,6 +454,7 @@ def diff_aligned_2d(
         b: np.ndarray,
         fill,
         eq=None,
+        e_abs: Optional[float] = None,
         fill_eq=_undefined,
         min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
         max_cost: Union[int, tuple[int, ...]] = MAX_COST,
@@ -441,6 +477,9 @@ def diff_aligned_2d(
         An optional pair of tensors ``(a_, b_)`` substituting the input
         matrices when computing the diff. The returned chunks, however, are
         still composed of elements from a and b.
+    e_abs
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+        instead of the equality comparison ``a[i] == b[j]``.
     fill_eq
         The empty value to use when filling "eq" matrices.
     min_ratio
@@ -511,11 +550,11 @@ def diff_aligned_2d(
         min_ratio_row = max(min_ratio_row, (_max_cost - max_cost_row) / _max_cost)
         mask *= len(mask) / _max_cost
 
-        # crunch row differences without using shallow algorithm
+        # crunch row differences without using the shallow algorithm
         raw_diff = sequence_diff(
             a=a_,
             b=b_,
-            eq=get_backend_2d(a_, b_, mask),
+            eq=get_backend_2d(a_, b_, mask, e_abs=e_abs),
             accept=min_ratio_row,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
@@ -538,6 +577,7 @@ def diff_aligned_2d(
         signatures = get_row_col_diff(
             a=a_,
             b=b_,
+            e_abs=e_abs,
             min_ratio=min_ratio,
             max_cost=max_cost,
             max_calls=max_calls,
@@ -551,7 +591,10 @@ def diff_aligned_2d(
             a_, b_ = a, b
 
     # a, b, a_, b_ are all of the same exact shape starting here
-    eq_matrix = a_ == b_
+    if e_abs is None:
+        eq_matrix = a_ == b_
+    else:
+        eq_matrix = np.abs(a_ - b_) <= e_abs
     idx = tuple()
     for dim, sig in enumerate(signatures):
         offset = 0
