@@ -40,8 +40,6 @@ def diff(
         dig=None,
         strict: bool = True,
         ext_no_python: bool = False,
-        ext_2d_kernel: bool = False,
-        ext_2d_kernel_weights: Optional[Sequence[float]] = None,
 ) -> Diff:
     """
     Computes a diff between sequences.
@@ -60,7 +58,7 @@ def diff(
           when computing the diff. The returned chunks, however, are still
           composed of elements from a and b.
     accept
-        The lower threshold for the equaity measure.
+        The lower threshold for the equality measure.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -97,18 +95,6 @@ def diff(
         min_ratio and max_cost or otherwise has a zero ratio.
     ext_no_python
         If True will disallow slow python-based comparison protocols.
-    ext_2d_kernel
-        If True, will enable fast kernels computing ratios for 2D
-        numpy inputs with matching trailing dimension.
-    ext_2d_kernel_weights
-        Optionally, for the above option, you can specify an array
-        of weights with the length equal to the trailing dimension of a and b.
-        Weights will be used to compute the equality ratio.
-        Using ext_2d_kernel and ext_2d_kernel_weights  is roughly equivalent to
-        providing the following function as an ``eq`` argument:
-
-        def eq(i, j):
-            return ((a[i] == b[j]) * weights).sum() / len(weights)
 
     Returns
     -------
@@ -151,8 +137,6 @@ def diff(
         comparison_backend=wrap(
             data=eq,
             allow_python=not ext_no_python,
-            allow_k2d=ext_2d_kernel,
-            k2d_weights=ext_2d_kernel_weights,
         ),
         accept=accept,
         max_cost=max_cost,

@@ -49,12 +49,3 @@ def test_buffer_protocol(typecode):
     ))
     assert comparison_backend(0, 0) == 0
     assert comparison_backend(2, 0) == 1
-
-
-def test_buffer_protocol_2d():
-    comparison_backend = wrap((
-        np.array([[0, .5], [1, 1.5], [2, 2.5]]),
-        np.array([[2, 2.5], [3, 3.5]]),
-    ), allow_k2d=True)
-    assert comparison_backend(0, 0) == 0
-    assert comparison_backend(2, 0) == 1

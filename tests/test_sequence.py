@@ -4,6 +4,7 @@ from array import array
 
 from sdiff.sequence import diff, diff_nested
 from sdiff.chunk import Diff, Chunk
+from sdiff.numpy import get_backend_2d
 
 from .util import np_chunk_eq
 
@@ -333,7 +334,7 @@ def test_numpy_ext_2d(monkeypatch, kernel):
 
     monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
-    assert diff(a, b, ext_no_python=kernel == "c", ext_2d_kernel=True, accept=0.5, kernel=kernel) == Diff(
+    assert diff(a, b, eq=get_backend_2d(a, b), ext_no_python=kernel == "c", accept=0.5, kernel=kernel) == Diff(
         ratio=5./6,
         diffs=[
             Chunk(a[:3], b[:3], eq=True),
@@ -361,7 +362,7 @@ def test_numpy_ext_2d_weights(monkeypatch, kernel):
 
     monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
-    assert diff(a, b, ext_no_python=kernel == "c", ext_2d_kernel=True, ext_2d_kernel_weights=weights, accept=0.5,
+    assert diff(a, b, ext_no_python=kernel == "c", eq=get_backend_2d(a, b, weights), accept=0.5,
                 min_ratio=0, kernel=kernel) == Diff(
         ratio=2./3,
         diffs=[

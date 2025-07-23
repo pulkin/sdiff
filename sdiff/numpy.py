@@ -7,6 +7,9 @@ import numpy as np
 from .chunk import Diff, Chunk, ChunkSignature, Signature
 from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
 from .sequence import diff_nested, diff as sequence_diff, _pop_optional
+from .cython.tools import build_inline_module
+from .cython.compare import ComparisonBackend
+from .protocols import PREAMBLE, COMPARE_DEF, compose_init, dtypes_conversion
 
 
 def diff(
@@ -286,6 +289,34 @@ def align_inflate(a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int) -
     return result_a, result_b
 
 
+def get_backend_2d(a: np.ndarray, b: np.ndarray, weights: Optional[np.ndarray] = None) -> ComparisonBackend:
+    dtype_str_a = dtypes_conversion[memoryview(a).format]
+    dtype_str_b = dtypes_conversion[memoryview(b).format]
+    if weights is None:
+        weights = np.ones(a.shape[1], dtype=float)
+    weights = np.asanyarray(weights, dtype=float)
+    return build_inline_module("\n".join([
+        *PREAMBLE,
+        *compose_init([
+            (dtype_str_a + "[:, :]", "a"),
+            (dtype_str_b + "[:, :]", "b"),
+            ("const double[:]", "weights"),
+        ]),
+        "    assert a.shape[1] == b.shape[1]",
+        "    assert a.shape[1] == weights.shape[0]",
+        "  @cython.cdivision(True)",
+        *COMPARE_DEF,
+        "    cdef:",
+        "      Py_ssize_t t",
+        "      double result = 0",
+        "    if self.weights.shape[0] == 0:",
+        "      return 1",
+        "    for t in range(self.weights.shape[0]):",
+        "      result += (self.a[i, t] == self.b[j, t]) * self.weights[t]",
+        "    return result / self.weights.shape[0]",
+    ])).Backend(a, b, weights)
+
+
 class NumpyDiff(NamedTuple):
     """
     Three 2D arrays of the same shape describing an aligned diff
@@ -441,8 +472,8 @@ def diff_aligned_2d(
     - ``result.a``: inflated matrix a
     - ``result.b``: inflated matrix b
     - ``result.eq``: equality matrix
-    - ``result.row_diff_signature``: a signature describing the alignement of rows in a and b;
-    - ``result.col_diff_signature``: a signature describing the alignement of cols in a and b;
+    - ``result.row_diff_signature``: a signature describing the alignment of rows in a and b;
+    - ``result.col_diff_signature``: a signature describing the alignment of cols in a and b;
 
     Unlike other diff routines, numpy diff returns an intermediate representation of diff.
     You can convert it to the common ``Diff`` type through ``result.to_diff``.
@@ -484,13 +515,12 @@ def diff_aligned_2d(
         raw_diff = sequence_diff(
             a=a_,
             b=b_,
+            eq=get_backend_2d(a_, b_, mask),
             accept=min_ratio_row,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
             max_calls=max_calls_here,
             kernel=kernel,
-            ext_2d_kernel=True,
-            ext_2d_kernel_weights=mask,
             ext_no_python=True,
         )
         row_diff_sig = raw_diff.signature

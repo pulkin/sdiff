@@ -12,7 +12,7 @@ from Cython.Build.Inline import cython_inline, _inline_key, strip_common_indent,
 def build_inline_module(code,
                   lib_dir=os.path.join(get_cython_cache_dir(), 'inline'),
                   cython_include_dirs=None, cython_compiler_directives=None,
-                  force=False, quiet=False, annotate=False, language_level=None):
+                  force=False, quiet=False, annotate=None, language_level=None):
     """
     Builds an inline module.
 
@@ -33,7 +33,8 @@ def build_inline_module(code,
     -------
 
     """
-
+    if annotate is None and os.environ.get("SDIFF_DEBUG"):
+        annotate = True
     cython_compiler_directives = dict(cython_compiler_directives) if cython_compiler_directives else {}
     if language_level is None and 'language_level' not in cython_compiler_directives:
         language_level = '3'
