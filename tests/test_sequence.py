@@ -380,3 +380,21 @@ def test_empty_nested_0():
         ratio=1.0,
         diffs=[Chunk(data_a=[[]], data_b=[[]], eq=True)],
     )
+
+
+@pytest.mark.parametrize("kernel", ["py", "c"])
+@pytest.mark.parametrize("arr", [False, 'd'])
+def test_e_abs(kernel, arr):
+    a = [1, 2.1, 3, 4]
+    b = [1, 2, 3.3, 4]
+    if arr:
+        a = array(arr, a)
+        b = array(arr, b)
+    assert diff(a, b, e_abs=0.2, kernel=kernel) == Diff(
+        ratio=.75,
+        diffs=[
+            Chunk(data_a=a[:2], data_b=b[:2], eq=True),
+            Chunk(data_a=a[2:3], data_b=b[2:3], eq=False),
+            Chunk(data_a=a[3:], data_b=b[3:], eq=True),
+        ],
+    )

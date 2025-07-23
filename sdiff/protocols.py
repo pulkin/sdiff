@@ -1,3 +1,5 @@
+from typing import Optional
+
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
 
@@ -13,6 +15,10 @@ COMPARE_DEF = (
 )
 COMPARE_SIMPLE = (
     "    return self.a[i] == self.b[j]",
+)
+COMPARE_ABS = (
+    "    cdef double delta = self.a[i] - self.b[j]",
+    "    return (delta >= -self.e_abs) and (delta <= self.e_abs)",
 )
 dtypes_conversion = {
     "c": "const char",
@@ -50,7 +56,7 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
     return source_code
 
 
-def wrap(data, allow_python: bool = True, **kwargs):
+def wrap(data, allow_python: bool = True, e_abs: Optional[float] = None, **kwargs):
     """
     Figures out the compare protocol from the argument.
 
@@ -59,10 +65,13 @@ def wrap(data, allow_python: bool = True, **kwargs):
     data
         The object to wrap into comparison backend. Can be
         - either a pair of array-like objects
-        - or a python callable(i, j)
+        - or a callable(i, j)
     allow_python
         If set to True, will allow (slow) python kernels for
         comparing python lists, etc.
+    e_abs
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+        instead of the equality comparison ``a[i] == b[j]``.
     kwargs
         Build arguments.
 
@@ -80,16 +89,19 @@ def wrap(data, allow_python: bool = True, **kwargs):
         a, b = data
         ta, tb = type(a), type(b)
         is_pair = True
+        init_args = {"a": a, "b": b}
 
         if ta == tb:
             if ta is str:
+                if e_abs is not None:
+                    raise ValueError("cannot use e_abs for str comparison")
                 source_code.extend(compose_init([
                     ("unicode", "a"),
                     ("unicode", "b"),
                 ]))
                 source_code.extend(COMPARE_DEF)
                 source_code.extend(COMPARE_SIMPLE)
-                return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
+                return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
             else:
                 try:
                     mem_a = memoryview(a)
@@ -102,27 +114,37 @@ def wrap(data, allow_python: bool = True, **kwargs):
                     dtype_str_a = dtypes_conversion[mem_a.format]
                     dtype_str_b = dtypes_conversion[mem_b.format]
                     if mem_a.ndim == 1:
-                        source_code.extend(compose_init([
+                        _vars = [
                             (dtype_str_a + "[:]", "a"),
                             (dtype_str_b + "[:]", "b"),
-                        ]))
+                        ]
+                        if e_abs is not None:
+                            _vars.append(("double", "e_abs"))
+                            init_args["e_abs"] = e_abs
+                        source_code.extend(compose_init(_vars))
                         source_code.extend(COMPARE_DEF)
-                        source_code.extend(COMPARE_SIMPLE)
-                        return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
+                        source_code.extend(COMPARE_ABS if e_abs is not None else COMPARE_SIMPLE)
+                        return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
                     else:
                         raise ValueError(f"unsupported dimensionality of tensors: {mem_a.ndim}")
 
     if not allow_python:
         raise ValueError("failed to pick a type-aware protocol")
     if is_pair:
-        source_code.extend(compose_init([
+        _vars = [
             ("object", "a"),
             ("object", "b"),
-        ]))
+        ]
+        if e_abs is not None:
+            _vars.append(("double", "e_abs"))
+            init_args["e_abs"] = e_abs
+        source_code.extend(compose_init(_vars))
         source_code.extend(COMPARE_DEF)
-        source_code.extend(COMPARE_SIMPLE)
-        return build_inline_module("\n".join(source_code), **kwargs).Backend(a, b)
+        source_code.extend(COMPARE_ABS if e_abs is not None else COMPARE_SIMPLE)
+        return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
     else:
+        if e_abs is not None:
+            raise ValueError("cannot use e_abs for callables")
         source_code.extend(compose_init([
             ("object", "callable"),
         ]))

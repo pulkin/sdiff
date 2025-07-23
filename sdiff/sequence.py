@@ -30,6 +30,7 @@ def diff(
         a: Sequence[object],
         b: Sequence[object],
         eq=None,
+        e_abs: Optional[float] = None,
         accept: float = MIN_RATIO,
         min_ratio: float = MIN_RATIO,
         max_cost: int = MAX_COST,
@@ -57,6 +58,9 @@ def diff(
         - a pair of sequences ``(a_, b_)`` substituting the input sequences
           when computing the diff. The returned chunks, however, are still
           composed of elements from a and b.
+    e_abs
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= e_abs``
+        instead of the equality comparison ``a[i] == b[j]``.
     accept
         The lower threshold for the equality measure.
     min_ratio
@@ -137,6 +141,7 @@ def diff(
         comparison_backend=wrap(
             data=eq,
             allow_python=not no_python,
+            e_abs=e_abs,
         ),
         accept=accept,
         max_cost=max_cost,
