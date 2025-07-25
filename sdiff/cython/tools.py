@@ -9,10 +9,17 @@ from Cython.Build.Cache import get_cython_cache_dir
 from Cython.Build.Inline import cython_inline, _inline_key, strip_common_indent, _get_build_extension, load_dynamic
 
 
-def build_inline_module(code,
-                  lib_dir=os.path.join(get_cython_cache_dir(), 'inline'),
-                  cython_include_dirs=None, cython_compiler_directives=None,
-                  force=False, quiet=False, annotate=None, language_level=None):
+def build_inline_module(
+        code,
+        lib_dir=os.path.join(get_cython_cache_dir(), 'inline'),
+        cython_include_dirs=None,
+        cython_compiler_directives=None,
+        force=False,
+        quiet=False,
+        annotate=None,
+        language_level=None,
+        shared_utility_qualified_name: str = "sdiff.cython._shared",
+):
     """
     Builds an inline module.
 
@@ -28,6 +35,7 @@ def build_inline_module(code,
     quiet
     annotate
     language_level
+    shared_utility_qualified_name
 
     Returns
     -------
@@ -84,6 +92,7 @@ def build_inline_module(code,
                 compiler_directives=cython_compiler_directives,
                 quiet=quiet,
                 annotate=annotate,
+                shared_utility_qualified_name=shared_utility_qualified_name,
             )
             build_extension.build_temp = os.path.dirname(pyx_file)
             build_extension.build_lib  = lib_dir

@@ -3,6 +3,10 @@ from Cython.Build import cythonize
 
 extensions = [
     Extension(
+        name="sdiff.cython._shared",
+        sources=["sdiff/cython/_shared.c"],
+    ),
+    Extension(
         name="sdiff.cython.compare",
         sources=["sdiff/cython/compare.pyx"],
         include_dirs=["sdiff/cython"],  # Allow cimport to find .pxd files
@@ -23,6 +27,7 @@ setup(
         },
         include_path=["sdiff/cython"],
         annotate=True,
+        shared_utility_qualified_name="sdiff.cython._shared",
     ),
     packages=find_namespace_packages(),
     zip_safe=False,

@@ -1,6 +1,5 @@
 import pytest
 from array import array
-import numpy as np
 
 from sdiff.protocols import wrap
 
