@@ -15,6 +15,7 @@ dependencies = [
     "pyarrow",
     "openpyxl",
     "python-magic",
+    "pyparsing",
 ]
 
 [build-system]

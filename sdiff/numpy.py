@@ -9,7 +9,8 @@ from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
 from .sequence import diff_nested, diff as sequence_diff, _pop_optional
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .protocols import PREAMBLE, COMPARE_DEF, compose_init, dtypes_conversion
+from .cython.struct3118 import c_types
+from .protocols import IMPORT, CLASS_DEF, COMPARE_DEF, compose_init
 
 
 def diff(
@@ -305,8 +306,8 @@ def get_backend_2d(
         weights: Optional[np.ndarray] = None,
         atol: Optional[float] = None,
 ) -> ComparisonBackend:
-    dtype_str_a = dtypes_conversion[memoryview(a).format]
-    dtype_str_b = dtypes_conversion[memoryview(b).format]
+    dtype_str_a = c_types[memoryview(a).format]
+    dtype_str_b = c_types[memoryview(b).format]
     if weights is None:
         weights = np.ones(a.shape[1], dtype=float)
     weights = np.asanyarray(weights, dtype=float)
@@ -320,7 +321,8 @@ def get_backend_2d(
         _vars.append(("double", "e_abs"))
         init_args["e_abs"] = atol
     source_code = [
-        *PREAMBLE,
+        *IMPORT,
+        *CLASS_DEF,
         *compose_init(_vars),
         "    assert a.shape[1] == b.shape[1]",
         "    assert a.shape[1] == weights.shape[0]",

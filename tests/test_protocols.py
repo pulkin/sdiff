@@ -1,7 +1,9 @@
 import pytest
 from array import array
+import numpy as np
 
 from sdiff.protocols import wrap
+from sdiff.cython.struct3118 import parse_3118, StructType, StructField, AtomicType
 
 
 def test_call_protocol():
@@ -47,4 +49,88 @@ def test_buffer_protocol(typecode):
         array(typecode, [2, 3]),
     ))
     assert comparison_backend(0, 0) == 0
+    assert comparison_backend(2, 0) == 1
+
+
+def array_typecode2format(typecode) -> str:
+    return memoryview(array(typecode, [])).format
+
+
+@pytest.mark.parametrize("typecode", ["b", "B", "h", "H", "i", "I", "l", "L", "q", "Q", "f", "d", "u", "w"])
+def test_3118_array_simple_types(typecode):
+    assert parse_3118(array_typecode2format(typecode)) == AtomicType(typecode="w" if typecode == "u" else typecode, byte_order="@")
+
+
+def np_dtype2format(dtype) -> str:
+    return memoryview(np.empty([], dtype=dtype)).format
+
+
+@pytest.mark.parametrize("dtype, typecode", [
+    (np.int8, 'b'),
+    (np.uint8, 'B'),
+    (np.int16, 'h'),
+    (np.uint16, 'H'),
+    (np.int32, 'i'),
+    (np.uint32, 'I'),
+    (np.int64, 'l'),
+    (np.uint64, 'L'),
+    (np.float16, 'e'),
+    (np.float32, 'f'),
+    (np.float64, 'd'),
+    (np.float128, 'g'),
+    (np.object_, 'O'),
+    (np.bool_, '?'),
+    (np.str_, 'w'),
+    (np.bytes_, 's'),
+    (np.complex64, 'Zf'),
+    (np.complex128, 'Zd'),
+])
+def test_3118_np_simple_types(dtype, typecode):
+    assert parse_3118(np_dtype2format(dtype)) == AtomicType(typecode=typecode[-1:], byte_order="@", z=typecode[0] == "Z")
+
+
+@pytest.mark.parametrize("byte_order", ["<", ">", "="])
+def test_3118_np_byte_order(byte_order):
+    transformed = {"<": "@", ">": ">", "=": "@"}
+    assert parse_3118(np_dtype2format(byte_order + "h")) == AtomicType(typecode="h", byte_order=transformed[byte_order])
+
+
+@pytest.fixture
+def nested_np_dtype():
+    dtype_a = np.dtype([("ix", ">i8"), ("val", "<f", 2)])
+    return np.dtype([('matrix', dtype_a, (3, 2)), ("weights", "f", (2, 3)), ('comment?_^', np.str_, 32)])
+
+
+def test_3118_np_nested_struct(nested_np_dtype):
+    assert parse_3118(np_dtype2format(nested_np_dtype)) == StructType((
+        StructField(type=StructType((
+            StructField(type=AtomicType(typecode="q", byte_order=">"), shape=None, caption="ix"),
+            StructField(type=AtomicType(typecode="f", byte_order="@"), shape=(2,), caption="val"),
+        )), shape=(3, 2), caption="matrix"),
+        StructField(type=AtomicType(typecode="f", byte_order="@"), shape=(2,3), caption="weights"),
+        StructField(type=AtomicType(typecode="w", byte_order="@"), shape=32, caption="comment?_^"),
+    ))
+
+
+@pytest.mark.parametrize("dtype", [np.int8, np.int16, np.int32, np.int64, np.float16, np.float32,
+                                   np.float64, np.float128, np.object_, np.bool_, np.str_, np.bytes_])
+def test_buffer_protocol_np(dtype):
+    if dtype in (np.float16, np.str_):
+        pytest.skip("not supported in cython")
+    comparison_backend = wrap((
+        np.array([0, 1, 2], dtype=dtype),
+        np.array([2, 3], dtype=dtype),
+    ))
+    assert comparison_backend(0, 0) == 0
+    assert comparison_backend(2, 0) == 1
+
+
+def test_np_record():
+    dtype = np.dtype([("ix", "i8"), ("val", "f", 2)])
+    comparison_backend = wrap((
+        np.array([(0, (3.14, 159)), (1, (2.71, 828)), (2, (6.02, 333))], dtype=dtype),
+        np.array([(2, (6.02, 333)), (0, (3.14, 36.0))], dtype=dtype),
+    ))
+    assert comparison_backend(0, 0) == 0
+    assert comparison_backend(0, 1) == 2./3
     assert comparison_backend(2, 0) == 1

@@ -139,7 +139,7 @@ def diff(
         n=n,
         m=m,
         comparison_backend=wrap(
-            data=eq,
+            arg=eq,
             allow_python=not no_python,
             atol=atol,
         ),
