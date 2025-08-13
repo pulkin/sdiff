@@ -56,9 +56,14 @@ def array_typecode2format(typecode) -> str:
     return memoryview(array(typecode, [])).format
 
 
-@pytest.mark.parametrize("typecode", ["b", "B", "h", "H", "i", "I", "l", "L", "q", "Q", "f", "d", "u", "w"])
+@pytest.mark.parametrize("typecode", list("bBhHiIlLqQfduw"))
 def test_3118_array_simple_types(typecode):
-    assert parse_3118(array_typecode2format(typecode)) == AtomicType(typecode="w" if typecode == "u" else typecode, byte_order="@")
+    try:
+        # typecode 'w' is not supported everywhere
+        _format = array_typecode2format(typecode)
+    except ValueError as e:
+        pytest.skip(f"skipped {typecode} because of {e}")
+    assert parse_3118(_format) == AtomicType(typecode="w" if typecode == "u" else typecode, byte_order="@")
 
 
 def np_dtype2format(dtype) -> str:
