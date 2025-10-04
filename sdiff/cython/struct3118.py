@@ -47,7 +47,7 @@ class AtomicType(Type):
     def c(self) -> str:
         if self.z:
             raise ValueError("complex values not supported")
-        if self.byte_order != "@":
+        if self.byte_order not in "@=":
             raise ValueError(f"non-native byte order '{self.byte_order}' is not supported")
         return c_types[self.typecode]
 

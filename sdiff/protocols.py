@@ -24,7 +24,7 @@ COMPARE_SIMPLE = (
 )
 COMPARE_ABS = (
     "    cdef double delta = self.a[i] - self.b[j]",
-    "    return (delta >= -self.e_abs) and (delta <= self.e_abs)",
+    "    return (delta >= -self.atol) and (delta <= self.atol)",
 )
 
 
@@ -111,10 +111,13 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
 
                     _counter = 0
                     _types = {}
-                    def _declare(t: Type) -> str:
+                    def _declare(t: Type, array_exact: bool = True, do_weights: bool = False) -> str:
+                        """Declares a struct type and adds a comparison for it"""
                         nonlocal _counter
                         if isinstance(t, AtomicType):
                             return t.c
+                        elif t in _types:
+                            return _types[t]
                         elif isinstance(t, StructType):
                             name = f"struct_{_counter}"
                             _types[t] = name
@@ -131,7 +134,7 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                             source_code.extend(_code)
                             _code = []
                             _max_dims = 0
-                            _n = 0
+                            _need_temp = False
                             for _i, _field in enumerate(t.fields):
                                 if _field.shape is None:
                                     _shape = tuple()
@@ -140,10 +143,12 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                                 else:
                                     _shape = _field.shape
 
-                                if len(_shape) == 0:
-                                    _n += 1
-                                else:
-                                    _n += reduce(mul, _shape)
+                                _n_elements = 1
+                                if _shape:
+                                    _n_elements = reduce(mul, _shape)
+                                if _n_elements > 1:
+                                    _code.append(f"  temp = 0")
+                                    _need_temp = True
 
                                 _indent = ""
                                 _index = ""
@@ -152,24 +157,56 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                                     _indent += "  "
                                     _index += f"[i{_j}]"
                                 _max_dims = max(_max_dims, len(_shape))
+                                if _n_elements == 1:
+                                    _accumulator = "result"
+                                else:
+                                    _accumulator = "temp"
 
                                 if isinstance(_field.type, AtomicType):
-                                    _code.append(f"  {_indent}result += a.f{_i}{_index} == b.f{_i}{_index}")
+                                    _eq = f"a.f{_i}{_index} == b.f{_i}{_index}"
+                                    if atol is not None and _field.type.typecode != 's':
+                                        _eq = f"(a.f{_i}{_index} - b.f{_i}{_index}) >= -atol and (a.f{_i}{_index} - b.f{_i}{_index}) <= atol"
+                                    if do_weights and _accumulator == "result":
+                                        _eq = f"({_eq}) * weights[{_i}]"
+                                    _code.append(f"  {_indent}{_accumulator} += {_eq}")
                                 elif isinstance(_field.type, StructType):
-                                    _code.append(f"  {_indent}result += compare_{_types[_field.type]}(a.f{_i}{_index}, b.f{_i}{_index})")
+                                    _args = f"a.f{_i}{_index}, b.f{_i}{_index}"
+                                    if atol is not None:
+                                        _args += ", atol"
+                                    _code.append(f"  {_indent}{_accumulator} += compare_{_types[_field.type]}({_args})")
                                 else:
                                     raise ValueError(f"unknown type: {_field.type}")
+                                if _accumulator == "temp":
+                                    if array_exact:
+                                        _eq = f"temp == {_n_elements}"
+                                    else:
+                                        _eq = f"temp / {_n_elements}"
+                                    if do_weights:
+                                        _eq = f"({_eq}) * weights[{_i}]"
+                                    _code.append(f"  result += {_eq}")
+                            _args = f"const {name} a, const {name} b"
+                            if do_weights:
+                                _args += ", const double[:] weights"
+                            if atol is not None:
+                                _args += ", const double atol"
                             source_code.extend([
-                                f"cdef double compare_{name}(const {name} a, const {name} b):",
+                                f"cdef double compare_{name}({_args}):",
                                 f"  cdef double result = 0",
                             ])
+                            if _need_temp:
+                                source_code.append("  cdef double temp = 0")
                             if _max_dims:
                                 source_code.append(f"  cdef Py_ssize_t {', '.join(f'i{_j}' for _j in range(_max_dims))}")
                             source_code.extend(_code)
-                            source_code.append(f"  return result / {_n}")
+                            if len(t.fields) == 1:
+                                _postfix = ""
+                            else:
+                                _postfix = f" / {len(t.fields)}"
+                            source_code.append(f"  return result{_postfix}")
                             return name
                         else:
                             raise ValueError(f"unknown type: {t}")
+
                     if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
                         dtype_str = "object"
                         _vars = [
@@ -177,16 +214,18 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                             (f"{dtype_str}[:]", "b"),
                         ]
                     else:
-                        dtype_str = _declare(struct_a)
+                        dtype_str = _declare(struct_a, do_weights=True)
                         _vars = [
                             (f"const {dtype_str}[:]", "a"),
                             (f"const {dtype_str}[:]", "b"),
                         ]
+                        if isinstance(struct_a, StructType):
+                            _vars.append(("const double[:]", "weights"))
 
                     if mem_a.ndim == 1:
                         if atol is not None:
-                            _vars.append(("double", "e_abs"))
-                            init_args["e_abs"] = atol
+                            _vars.append(("double", "atol"))
+                            init_args["atol"] = atol
                         source_code.extend(CLASS_DEF)
                         source_code.extend(compose_init(_vars))
                         source_code.extend(COMPARE_DEF)
@@ -194,9 +233,13 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                         if isinstance(struct_a, AtomicType):
                             source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
                         elif isinstance(struct_a, StructType):
+                            _args = "self.a[i], self.b[j], self.weights"
                             if atol is not None:
-                                raise NotImplementedError("atol not implemented for struct")
-                            source_code.append(f"    return compare_{dtype_str}(self.a[i], self.b[j])")
+                                _args += ", self.atol"
+                            if struct_weights is None:
+                                struct_weights = array('d', [1.] * len(struct_a.fields))
+                            init_args["weights"] = array('d', struct_weights)
+                            source_code.append(f"    return compare_{dtype_str}({_args})")
                         else:
                             raise ValueError(f"unknown type: {struct_a}")
                         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
@@ -211,8 +254,8 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
             ("object", "b"),
         ]
         if atol is not None:
-            _vars.append(("double", "e_abs"))
-            init_args["e_abs"] = atol
+            _vars.append(("double", "atol"))
+            init_args["atol"] = atol
         source_code.extend(CLASS_DEF)
         source_code.extend(compose_init(_vars))
         source_code.extend(COMPARE_DEF)

@@ -131,11 +131,61 @@ def test_buffer_protocol_np(dtype):
 
 
 def test_np_record():
-    dtype = np.dtype([("ix", "i8"), ("val", "f", 2)])
+    dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
+    a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
+    comparison_backend = wrap((a, a))
+    assert comparison_backend(0, 0) == 1
+    assert comparison_backend(0, 1) == 1./3
+    assert comparison_backend(0, 2) == 1./3
+    assert comparison_backend(1, 2) == 0
+
+
+def test_np_record_atol():
+    dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
+    a = np.array([(0, (0., 10.), b"a"), (0, (1., 10.), b"b"), (1, (0., 10.), b"c")], dtype=dtype)
+    comparison_backend = wrap((a, a), atol=1.5)
+    assert comparison_backend(0, 0) == 1
+    assert comparison_backend(0, 1) == 2./3
+    assert comparison_backend(0, 2) == 2./3
+    assert comparison_backend(1, 2) == 2./3
+
+
+def test_np_record_weights():
+    dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
+    a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
+    comparison_backend = wrap((a, a), struct_weights=[3, 6, 9])
+    assert comparison_backend(0, 0) == 6
+    assert comparison_backend(0, 1) == 1
+    assert comparison_backend(0, 2) == 2
+    assert comparison_backend(1, 2) == 0
+
+
+@pytest.mark.xfail(reason="https://github.com/cython/cython/issues/7191")
+def test_np_record_nested_0():
+    dtype_inner = np.dtype([("ix", "i4"), ("name", "S5")])
+    dtype = np.dtype([("pair_ix", "i8"), ("pair", dtype_inner)])
+    cat = (0, "cat")
+    bat = (1, "bat")
+    cat_ = (2, "cat")
     comparison_backend = wrap((
-        np.array([(0, (3.14, 159)), (1, (2.71, 828)), (2, (6.02, 333))], dtype=dtype),
-        np.array([(2, (6.02, 333)), (0, (3.14, 36.0))], dtype=dtype),
+        np.array([(0, [cat, cat]), (1, [cat, bat]), (2, [bat, cat])], dtype=dtype),
+        np.array([(2, [bat, cat_]), (0, [cat_, bat])], dtype=dtype),
     ))
     assert comparison_backend(0, 0) == 0
-    assert comparison_backend(0, 1) == 2./3
-    assert comparison_backend(2, 0) == 1
+    assert comparison_backend(0, 1) == 0.5
+    assert comparison_backend(2, 0) == 0.5
+
+
+def test_np_record_nested_1():
+    dtype_inner = np.dtype([("ix", "i4"), ("name", "S5")])
+    dtype = np.dtype([("pair_ix", "i8"), ("a", dtype_inner), ("b", dtype_inner)])
+    cat = (0, "cat")
+    bat = (1, "bat")
+    cat_ = (2, "cat")
+    comparison_backend = wrap((
+        np.array([(0, cat, cat), (1, cat, bat), (2, bat, cat)], dtype=dtype),
+        np.array([(2, bat, cat_), (0, cat_, bat)], dtype=dtype),
+    ))
+    assert comparison_backend(0, 0) == 1./6
+    assert comparison_backend(0, 1) == 0.5
+    assert comparison_backend(2, 0) == 5./6
