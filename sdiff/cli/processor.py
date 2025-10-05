@@ -1,3 +1,5 @@
+from . import rc as _
+
 import argparse
 from collections import namedtuple, defaultdict
 from pathlib import Path

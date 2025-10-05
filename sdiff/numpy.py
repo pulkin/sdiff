@@ -95,7 +95,7 @@ def diff(
 
 def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
     """
-    Computes a "common" diff signature using breadth-depth first.
+    Computes a "common" diff signature using breadth-first search.
 
     Parameters
     ----------

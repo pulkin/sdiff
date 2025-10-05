@@ -187,7 +187,7 @@ def diff_text(
     -------
     The text diff.
     """
-    with open(a, "r") as fa, open(b, "r") as fb:
+    with a.open("r") as fa, b.open("r") as fb:
         return _diff_text(list(fa), list(fb), name, min_ratio=min_ratio, min_ratio_row=min_ratio_row,
                           max_cost=max_cost, max_cost_row=max_cost_row)
 
