@@ -7,10 +7,8 @@ import numpy as np
 from .chunk import Diff, Chunk, ChunkSignature, Signature
 from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
 from .sequence import diff_nested, diff as sequence_diff, _pop_optional
-from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .cython.struct3118 import c_types
-from .protocols import IMPORT, CLASS_DEF, COMPARE_DEF, compose_init
+from .protocols import wrap
 
 
 def diff(
@@ -300,60 +298,6 @@ def align_inflate(a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int) -
     return result_a, result_b
 
 
-def get_backend_2d(
-        a: np.ndarray,
-        b: np.ndarray,
-        weights: Optional[np.ndarray] = None,
-        atol: Optional[float] = None,
-) -> ComparisonBackend:
-    dtype_str_a = c_types[memoryview(a).format]
-    dtype_str_b = c_types[memoryview(b).format]
-    if weights is None:
-        weights = np.ones(a.shape[1], dtype=float)
-    weights = np.asanyarray(weights, dtype=float)
-    _vars = [
-        (dtype_str_a + "[:, :]", "a"),
-        (dtype_str_b + "[:, :]", "b"),
-        ("const double[:]", "weights"),
-    ]
-    init_args = {"a": a, "b": b, "weights": weights}
-    if atol is not None:
-        _vars.append(("double", "e_abs"))
-        init_args["e_abs"] = atol
-    source_code = [
-        *IMPORT,
-        *CLASS_DEF,
-        *compose_init(_vars),
-        "    assert a.shape[1] == b.shape[1]",
-        "    assert a.shape[1] == weights.shape[0]",
-        "  @cython.cdivision(True)",
-        *COMPARE_DEF,
-        "    cdef:",
-        "      Py_ssize_t t",
-        "      double result = 0",
-    ]
-    if atol is not None:
-        source_code.append("      double delta")
-    source_code.extend([
-        "    if self.weights.shape[0] == 0:",
-        "      return 1",
-        "    for t in range(self.weights.shape[0]):",
-    ])
-    if atol is not None:
-        source_code.extend([
-            "      delta = self.a[i, t] - self.b[j, t]",
-            "      result += ((delta >= -self.e_abs) and (delta <= self.e_abs)) * self.weights[t]",
-        ])
-    else:
-        source_code.append(
-            "      result += (self.a[i, t] == self.b[j, t]) * self.weights[t]"
-        )
-    source_code.append(
-        "    return result / self.weights.shape[0]"
-    )
-    return build_inline_module("\n".join(source_code)).Backend(**init_args)
-
-
 class NumpyDiff(NamedTuple):
     """
     Three 2D arrays of the same shape describing an aligned diff
@@ -556,7 +500,11 @@ def diff_aligned_2d(
         raw_diff = sequence_diff(
             a=a_,
             b=b_,
-            eq=get_backend_2d(a_, b_, mask, atol=atol),
+            eq=wrap(
+                (np.core.records.fromarrays(a_.T), np.core.records.fromarrays(b_.T)),
+                atol=atol,
+                struct_weights=mask,
+            ),
             accept=min_ratio_row,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,

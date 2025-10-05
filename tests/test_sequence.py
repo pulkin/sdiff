@@ -4,7 +4,6 @@ from array import array
 
 from sdiff.sequence import diff, diff_nested
 from sdiff.chunk import Diff, Chunk
-from sdiff.numpy import get_backend_2d
 
 from .util import np_chunk_eq
 
@@ -316,63 +315,6 @@ def test_bug_0():
 def test_bug_1():
     a, b = [1, 1, 0, 1, 1, 1, 1, 1, 1], [0, 0, 1]
     diff(a, b, min_ratio=0, kernel="py")
-
-
-@pytest.mark.parametrize("kernel", ["py", "c"])
-def test_numpy_ext_2d(monkeypatch, kernel):
-    a = np.array([
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [10, 11, 12],
-        [13, 14, 15],
-        [16, 17, 18],
-    ])
-    b = a.copy()
-    b[1, 1] = 9
-    b[3] += 100
-
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
-
-    assert diff(a, b, eq=get_backend_2d(a, b), no_python=kernel == "c", accept=0.5, kernel=kernel) == Diff(
-        ratio=5./6,
-        diffs=[
-            Chunk(a[:3], b[:3], eq=True),
-            Chunk(a[3:4], b[3:4], eq=False),
-            Chunk(a[4:], b[4:], eq=True),
-        ]
-    )
-
-
-@pytest.mark.parametrize("kernel", ["py", "c"])
-def test_numpy_ext_2d_weights(monkeypatch, kernel):
-    a = np.array([
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [10, 11, 12],
-        [13, 14, 15],
-        [16, 17, 18],
-    ])
-    b = a.copy()
-    b[1, 1] = 9
-    b[3] += 100
-
-    weights = array('d', [.5, 2, .5])
-
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
-
-    assert diff(a, b, no_python=kernel == "c", eq=get_backend_2d(a, b, weights), accept=0.5,
-                min_ratio=0, kernel=kernel) == Diff(
-        ratio=2./3,
-        diffs=[
-            Chunk(a[:1], b[:1], eq=True),
-            Chunk(a[1:2], b[1:2], eq=False),
-            Chunk(a[2:3], b[2:3], eq=True),
-            Chunk(a[3:4], b[3:4], eq=False),
-            Chunk(a[4:], b[4:], eq=True),
-        ]
-    )
 
 
 def test_empty_nested_0():
