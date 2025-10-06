@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union, NamedTuple
+from typing import Optional, Union, NamedTuple
 from collections.abc import Sequence
 from itertools import groupby
 
@@ -90,6 +90,129 @@ def diff(
         rtn_diff=rtn_diff,
         nested_containers=(np.ndarray,),
         max_depth=ndim,
+    )
+
+
+def dtype_diff(
+        a,
+        b,
+        names: bool = False,
+        min_ratio: Union[float, tuple[float]] = MIN_RATIO,
+        max_cost: Union[int, tuple[int]] = MAX_COST,
+        max_calls: Union[int, tuple[int]] = MAX_CALLS,
+        eq_only: bool = False,
+        kernel: Optional[str] = None,
+        rtn_diff: bool = True,
+        data: Optional[tuple[np.array, np.array]] = None,
+        data_atol: Optional[float] = None,
+        data_min_ratio: float = MIN_RATIO,
+        data_max_cost: int = MAX_COST,
+) -> Diff:
+    """
+    Computes a diff between numpy record dtypes.
+    Produces a diff between record fields of the two dtypes.
+
+    Parameters
+    ----------
+    a
+    b
+        Numpy dtypes.
+    names
+        If True, requires field names to be the same.
+    min_ratio
+        The ratio below which the algorithm exits. The values closer to 1
+        typically result in faster run times while setting to 0 will force
+        the algorithm to crack through even completely dissimilar sequences.
+        This affects which arrays are considered "equal".
+    max_cost
+        The maximal cost of the diff: the number corresponds to the maximal
+        count of dissimilar/misaligned elements in both sequences. Setting
+        this to zero is equivalent to setting min_ratio to 1. The algorithm
+        worst-case time complexity scales with this number.
+    max_calls
+        The maximal number of calls (iterations) after which the algorithm gives
+        up. This has to be lower than ``len(a) * len(b)`` to have any effect.
+    eq_only
+        If True, attempts to guarantee the existence of an edit script
+        satisfying both min_ratio and max_cost without actually finding the
+        script. This provides an early stop is some cases and further savings
+        on run times. Will enforce rtn_diff=False.
+    kernel
+        The kernel to use:
+        - 'py': python implementation of Myers diff algorithm
+        - 'c': cython implementation of Myers diff algorithm
+    rtn_diff
+        If True, computes and returns the diff. Otherwise, returns the
+        similarity ratio only. Computing the similarity ratio only is
+        typically faster and consumes less memory.
+    data
+        If specified, compares the data while aligning field data types.
+    data_atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
+        instead of the equality comparison ``a[i] == b[j]`` for comparing data.
+    data_min_ratio
+        min_ratio for the data.
+    data_max_cost
+        max_cost for the data.
+
+    Returns
+    -------
+    The resulting diff between records' fields.
+    """
+    fields_a = list(a.fields.items())
+    fields_b = list(b.fields.items())
+    if data:
+        # a comparison taking into account field data
+        data_a, data_b = data
+        if names:
+            def _eq(i: int, j: int) -> bool:
+                name_a, type_a = fields_a[i]
+                name_b, type_b = fields_b[j]
+                return (
+                    type_a[0] == type_b[0] and
+                    name_a == name_b and
+                    sequence_diff(
+                        a=data_a[name_a],
+                        b=data_b[name_b],
+                        rtn_diff=False,
+                        eq_only=True,
+                        atol=data_atol,
+                        min_ratio=data_min_ratio,
+                        max_cost=data_max_cost,
+                    )
+                )
+        else:
+            def _eq(i: int, j: int) -> bool:
+                name_a, type_a = fields_a[i]
+                name_b, type_b = fields_b[j]
+                return (
+                    type_a[0] == type_b[0] and
+                    sequence_diff(
+                        a=data_a[name_a],
+                        b=data_b[name_b],
+                        rtn_diff=False,
+                        eq_only=True,
+                        atol=data_atol,
+                        min_ratio=data_min_ratio,
+                        max_cost=data_max_cost,
+                    )
+                )
+    else:
+        # a simple comparison not involving data
+        if names:
+            _eq = ([(k, v[0]) for k, v in fields_a], [(k, v[0]) for k, v in fields_b])
+        else:
+            _eq = ([v[0] for _, v in fields_a], [v[0] for _, v in fields_b])
+    return sequence_diff(
+        fields_a,
+        fields_b,
+        eq=_eq,
+        min_ratio=min_ratio,
+        max_cost=max_cost,
+        max_calls=max_calls,
+        eq_only=eq_only,
+        kernel=kernel,
+        rtn_diff=rtn_diff,
     )
 
 

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from sdiff.chunk import Diff, Chunk, Signature, ChunkSignature
-from sdiff.numpy import diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff
+from sdiff.numpy import diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff, dtype_diff
 
 from .util import np_chunk_eq, np_chunk_eq_aligned, np_raw_diff_eq
 
@@ -440,4 +440,70 @@ def test_empty_col_2(monkeypatch, a, sig):
         eq=np.zeros_like(a_, dtype=bool),
         row_diff_sig=Signature((ChunkSignature(10, 10, False),)),
         col_diff_sig=Signature((ChunkSignature(10, 0, False),)),
+    )
+
+
+def test_dtype_diff():
+    i8 = np.dtype("i8")
+    f8 = np.dtype("f8")
+    f4 = np.dtype("f4")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("ix", i8), ("value_1", f8), ("value_2", f8), ("comment", s32)])
+    d2 = np.dtype([("ix", i8), ("value_3", f8), ("value_2", f4)])
+
+    assert dtype_diff(d1, d2, min_ratio=0) == Diff(
+        ratio=4./7,
+        diffs=[
+            Chunk(data_a=[("ix", (i8, 0)), ("value_1", (f8, 8))], data_b=[("ix", (i8, 0)), ("value_3", (f8, 8))], eq=True),
+            Chunk(data_a=[("value_2", (f8, 16)), ("comment", (s32, 24))], data_b=[("value_2", (f4, 16))],
+                  eq=False),
+        ]
+    )
+
+
+def test_dtype_diff_names():
+    i8 = np.dtype("i8")
+    f8 = np.dtype("f8")
+    f4 = np.dtype("f4")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("ix", i8), ("value_1", f8), ("value_2", f8), ("comment", s32)])
+    d2 = np.dtype([("ix", i8), ("value_3", f8), ("value_2", f4)])
+
+    assert dtype_diff(d1, d2, names=True, min_ratio=0) == Diff(
+        ratio=2./7,
+        diffs=[
+            Chunk(data_a=[("ix", (i8, 0))], data_b=[("ix", (i8, 0))], eq=True),
+            Chunk(
+                data_a=[("value_1", (f8, 8)), ("value_2", (f8, 16)), ("comment", (s32, 24))],
+                data_b=[("value_3", (f8, 8)), ("value_2", (f4, 16))],
+                eq=False,
+            ),
+        ]
+    )
+
+
+def test_dtype_diff_data():
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("string", s32), ("a4", i8)])
+    d2 = np.dtype([("b1", i8), ("string", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
+
+    _a = np.arange(11)
+    _b = np.arange(1, 10)
+
+    data_a = np.rec.fromarrays([_a, _a + 10, _a + 20, ["s"] * 11, _a + 30], dtype=d1)
+    data_b = np.rec.fromarrays([_b + 10, ["x"] * 9, _b + 30, _b + 90, _b + 80], dtype=d2)
+
+    assert dtype_diff(d1, d2, min_ratio=0, data=(data_a, data_b)) == Diff(
+        ratio=0.4,
+        diffs=[
+            Chunk(data_a=[("a1", (i8, 0))], data_b=[], eq=False),
+            Chunk(data_a=[("a2", (i8, 8))], data_b=[("b1", (i8, 0))], eq=True),
+            Chunk(data_a=[("a3", (i8, 16)), ("string", (s32, 24))], data_b=[("string", (s32, 8))], eq=False),
+            Chunk(data_a=[("a4", (i8, 56))], data_b=[("b2", (i8, 40))], eq=True),
+            Chunk(data_a=[], data_b=[("b3", (i8, 48)), ("b4", (i8, 56))], eq=False),
+        ]
     )

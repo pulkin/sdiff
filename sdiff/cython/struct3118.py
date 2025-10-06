@@ -110,9 +110,10 @@ def parse_3118(s: str) -> Type:
     -------
     Struct description.
     """
-    if not s.startswith("T{"):
+    if not s.startswith("T{"):  # individual fields
         result = p_struct_field.parse_string(s)[0]
         if result.shape is not None and result.shape != 1:
-            raise ValueError(f"unsupported struct field {s}")
-        return result.type
-    return p_struct_type.parse_string(s)[0]
+            return StructType(fields=(result,))  # array wrapped into struct
+        return result.type  # Atomic type
+    else:  # explicitly struct
+        return p_struct_type.parse_string(s)[0]
