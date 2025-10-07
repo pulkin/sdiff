@@ -507,3 +507,25 @@ def test_dtype_diff_data():
             Chunk(data_a=[], data_b=[("b3", (i8, 48)), ("b4", (i8, 56))], eq=False),
         ]
     )
+
+
+def test_dtype_diff_atomic_0():
+    i8 = np.dtype("i8")
+
+    a = np.arange(12)
+    b = np.arange(1, 11)
+
+    assert dtype_diff(a.dtype, b.dtype, data=(a, b)) == Diff(ratio=1, diffs=[
+        Chunk(data_a=[("f", (i8, 0))], data_b=[("f", (i8, 0))], eq=True),
+    ])
+
+
+def test_dtype_diff_atomic_1():
+    i8 = np.dtype("i8")
+
+    a = np.arange(12)
+    b = np.arange(1, 11)
+
+    assert dtype_diff(a.dtype, b.dtype, data=(a, b), data_min_ratio=0.95) == Diff(ratio=0, diffs=[
+        Chunk(data_a=[("f", (i8, 0))], data_b=[("f", (i8, 0))], eq=False),
+    ])

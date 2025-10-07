@@ -94,6 +94,13 @@ def test_3118_np_simple_types(dtype, typecode):
     assert parse_3118(np_dtype2format(dtype)) == AtomicType(typecode=typecode[-1:], byte_order="@", z=typecode[0] == "Z")
 
 
+def test_3118_np_chars():
+    dtype = np.dtype("S32")
+    assert parse_3118(np_dtype2format(dtype)) == StructType(fields=(
+        StructField(type=AtomicType(typecode='s', byte_order="@"), shape=32),
+    ))
+
+
 @pytest.mark.parametrize("byte_order", ["<", ">", "="])
 def test_3118_np_byte_order(byte_order):
     transformed = {"<": "@", ">": ">", "=": "@"}

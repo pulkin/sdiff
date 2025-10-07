@@ -147,6 +147,7 @@ def dtype_diff(
         typically faster and consumes less memory.
     data
         If specified, compares the data while aligning field data types.
+        This may potentially be much slower to produce the diff.
     data_atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]`` for comparing data.
@@ -159,11 +160,28 @@ def dtype_diff(
     -------
     The resulting diff between records' fields.
     """
+    data_a = data_b = None
+    if data is not None:
+        data_a, data_b = data
+        if data_a.dtype != a:
+            raise ValueError(f"the type of data[0] does not match a")
+        if data_b.dtype != b:
+            raise ValueError(f"the type of data[1] does not match b")
+
+    if a.names is None:
+        a = np.dtype([("f", a)])
+        if data_a is not None:
+            data_a = np.rec.fromarrays([data_a], dtype=a)
+    if b.names is None:
+        b = np.dtype([("f", b)])
+        if data_b is not None:
+            data_b = np.rec.fromarrays([data_b], dtype=b)
+
     fields_a = list(a.fields.items())
     fields_b = list(b.fields.items())
-    if data:
+
+    if data is not None:
         # a comparison taking into account field data
-        data_a, data_b = data
         if names:
             def _eq(i: int, j: int) -> bool:
                 name_a, type_a = fields_a[i]
@@ -172,8 +190,8 @@ def dtype_diff(
                     type_a[0] == type_b[0] and
                     name_a == name_b and
                     sequence_diff(
-                        a=data_a[name_a],
-                        b=data_b[name_b],
+                        a=data_a[name_a] if name_a is not None else data_a,
+                        b=data_b[name_b] if name_b is not None else data_b,
                         rtn_diff=False,
                         eq_only=True,
                         atol=data_atol,
@@ -188,8 +206,8 @@ def dtype_diff(
                 return (
                     type_a[0] == type_b[0] and
                     sequence_diff(
-                        a=data_a[name_a],
-                        b=data_b[name_b],
+                        a=data_a[name_a] if name_a is not None else data_a,
+                        b=data_b[name_b] if name_b is not None else data_b,
                         rtn_diff=False,
                         eq_only=True,
                         atol=data_atol,
