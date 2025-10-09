@@ -13,6 +13,14 @@ def test_diff():
     )
     assert diff.get_a() == "helloworld"
     assert diff.get_b() == "hiworld"
+    assert diff.get_inflated_ab() == ("hellohiworld", "hellohiworld")
+    assert diff.with_data(list(range(10)), list(range(10, 17))) == Diff(
+        ratio=10./17,
+        diffs=[
+            Chunk(data_a=[0, 1, 2, 3, 4], data_b=[10, 11], eq=False),
+            Chunk(data_a=[5, 6, 7, 8, 9], data_b=[12, 13, 14, 15, 16], eq=True),
+        ]
+    )
 
 
 def test_important():

@@ -1,6 +1,7 @@
 from typing import Optional, Union, NamedTuple
 from collections.abc import Sequence
 from itertools import groupby
+from functools import partial
 
 import numpy as np
 
@@ -93,6 +94,18 @@ def diff(
     )
 
 
+def _to_record(arg):
+    if isinstance(arg, np.ndarray):
+        if arg.dtype.names is None:
+            return np.rec.fromarrays([arg], dtype=np.dtype([("f", arg.dtype)]))
+    elif isinstance(arg, np.dtype):
+        if arg.names is None:
+            return np.dtype([("f", arg)])
+    else:
+        raise ValueError(f"unbknown argument: {arg}")
+    return arg
+
+
 def dtype_diff(
         a,
         b,
@@ -103,7 +116,7 @@ def dtype_diff(
         eq_only: bool = False,
         kernel: Optional[str] = None,
         rtn_diff: bool = True,
-        data: Optional[tuple[np.array, np.array]] = None,
+        data: bool = True,
         data_atol: Optional[float] = None,
         data_min_ratio: float = MIN_RATIO,
         data_max_cost: int = MAX_COST,
@@ -146,8 +159,7 @@ def dtype_diff(
         similarity ratio only. Computing the similarity ratio only is
         typically faster and consumes less memory.
     data
-        If specified, compares the data while aligning field data types.
-        This may potentially be much slower to produce the diff.
+        If True, and both a, b are arrays, will use their data to align fields.
     data_atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]`` for comparing data.
@@ -160,38 +172,39 @@ def dtype_diff(
     -------
     The resulting diff between records' fields.
     """
+    a = _to_record(a)
+    b = _to_record(b)
+
     data_a = data_b = None
-    if data is not None:
-        data_a, data_b = data
-        if data_a.dtype != a:
-            raise ValueError(f"the type of data[0] does not match a")
-        if data_b.dtype != b:
-            raise ValueError(f"the type of data[1] does not match b")
 
-    if a.names is None:
-        a = np.dtype([("f", a)])
-        if data_a is not None:
-            data_a = np.rec.fromarrays([data_a], dtype=a)
-    if b.names is None:
-        b = np.dtype([("f", b)])
-        if data_b is not None:
-            data_b = np.rec.fromarrays([data_b], dtype=b)
+    if isinstance(a, np.ndarray):
+        data_a, a = a, a.dtype
+    else:
+        data = False
 
-    fields_a = list(a.fields.items())
-    fields_b = list(b.fields.items())
+    if isinstance(b, np.ndarray):
+        data_b, b = b, b.dtype
+    else:
+        data = False
 
-    if data is not None:
+    if (data_a is None) != (data_b is None):
+        raise ValueError("a and b have to be both arrays or both dtypes")
+
+    fields_a = list((name, t[0]) for name, t in a.fields.items())
+    fields_b = list((name, t[0]) for name, t in b.fields.items())
+
+    if data:
         # a comparison taking into account field data
         if names:
             def _eq(i: int, j: int) -> bool:
                 name_a, type_a = fields_a[i]
                 name_b, type_b = fields_b[j]
                 return (
-                    type_a[0] == type_b[0] and
+                    type_a == type_b and
                     name_a == name_b and
                     sequence_diff(
-                        a=data_a[name_a] if name_a is not None else data_a,
-                        b=data_b[name_b] if name_b is not None else data_b,
+                        a=data_a[name_a],
+                        b=data_b[name_b],
                         rtn_diff=False,
                         eq_only=True,
                         atol=data_atol,
@@ -204,10 +217,10 @@ def dtype_diff(
                 name_a, type_a = fields_a[i]
                 name_b, type_b = fields_b[j]
                 return (
-                    type_a[0] == type_b[0] and
+                    type_a == type_b and
                     sequence_diff(
-                        a=data_a[name_a] if name_a is not None else data_a,
-                        b=data_b[name_b] if name_b is not None else data_b,
+                        a=data_a[name_a],
+                        b=data_b[name_b],
                         rtn_diff=False,
                         eq_only=True,
                         atol=data_atol,
@@ -217,10 +230,9 @@ def dtype_diff(
                 )
     else:
         # a simple comparison not involving data
-        if names:
-            _eq = ([(k, v[0]) for k, v in fields_a], [(k, v[0]) for k, v in fields_b])
-        else:
-            _eq = ([v[0] for _, v in fields_a], [v[0] for _, v in fields_b])
+        _eq = None
+        if not names:
+            _eq = ([v for _, v in fields_a], [v for _, v in fields_b])
     return sequence_diff(
         fields_a,
         fields_b,
@@ -232,6 +244,39 @@ def dtype_diff(
         kernel=kernel,
         rtn_diff=rtn_diff,
     )
+
+
+def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Aligns arrays towards a common (record) dtype.
+    Given two record arrays and the dtype diff, produces the corresponding pair of arrays with the same record
+    dtype containing fields from both arrays.
+
+    Parameters
+    ----------
+    a
+    b
+        The arrays to align.
+    field_diff
+        A diff telling how to align fields.
+
+    Returns
+    -------
+    A pair of aligned inflated arrays.
+    """
+    a = _to_record(a)
+    b = _to_record(b)
+
+    dtype_a, dtype_b = map(np.dtype, map(list, field_diff.get_inflated_ab()))
+    init_a, init_b = field_diff.with_data(
+        data_a=[a[field] for field in a.dtype.fields],
+        data_b=[b[field] for field in b.dtype.fields],
+    ).get_inflated_ab(
+        hook_a_b=partial(np.zeros_like, shape=a.shape),
+        hook_b_a=partial(np.zeros_like, shape=b.shape),
+    )
+
+    return np.rec.fromarrays(init_a, dtype=dtype_a), np.rec.fromarrays(init_b, dtype=dtype_b)
 
 
 def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:

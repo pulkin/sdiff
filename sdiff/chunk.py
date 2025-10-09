@@ -1,6 +1,6 @@
 import itertools
 from typing import Any, Optional, Union
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from functools import reduce, cached_property
 from operator import add
 from dataclasses import dataclass
@@ -54,6 +54,13 @@ class Signature:
 
     def __len__(self):
         return sum(len(i) for i in self.parts)
+
+    @property
+    def ratio(self):
+        return (
+            sum(((i.size_a + i.size_b) * i.eq) for i in self.parts) /
+            sum((i.size_a + i.size_b) for i in self.parts)
+        )
 
     @classmethod
     def aligned(cls, n: int) -> "Signature":
@@ -191,6 +198,9 @@ def iter_coarse_chunks(chunks: Iterable[Chunk], consume_size: int) -> Iterable[C
         yield reduce(add, buffer)
 
 
+CrossHookType = Callable[[Any], Any]
+
+
 @dataclass(frozen=True)
 class Diff:
     """
@@ -208,6 +218,37 @@ class Diff:
     """
     ratio: float
     diffs: Optional[list[Chunk]]
+
+    @classmethod
+    def from_signature(cls, sig: Signature, data_a, data_b) -> "Diff":
+        """
+        Prepares a diff given the diff signature and the two sequences.
+
+        Parameters
+        ----------
+        sig
+            The diff signature.
+        data_a
+        data_b
+            The sequences to source data from.
+
+        Returns
+        -------
+        The resulting diff with the provided signature and data from `a` and `b`.
+        """
+        diffs = []
+        offset_a = offset_b = 0
+        for part in sig.parts:
+            diffs.append(Chunk(
+                data_a=data_a[offset_a:(offset_a := offset_a + part.size_a)],
+                data_b=data_b[offset_b:(offset_b := offset_b + part.size_b)],
+                eq=part.eq,
+            ))
+        if offset_a != len(data_a):
+            raise ValueError(f"{len(data_a)=}; expected: {offset_a}")
+        if offset_b != len(data_b):
+            raise ValueError(f"{len(data_b)=}; expected: {offset_b}")
+        return Diff(ratio=sig.ratio, diffs=diffs)
 
     def __float__(self):
         return float(self.ratio)
@@ -263,6 +304,45 @@ class Diff:
         if self.diffs is None:
             raise ValueError("no diff data")
         return reduce(add, (i.data_b for i in self.diffs))
+
+    def get_inflated_ab(self,
+            hook_a_b: Optional[CrossHookType] = None,
+            hook_b_a: Optional[CrossHookType] = None,
+    ) -> tuple[list[Any], list[Any]]:
+        """
+        Computes a pair of aligned sequences by inflating sequence `a` to include the values from `b` and vice versa.
+
+        Returns
+        -------
+        The two inflated sequences.
+        """
+        a = []
+        b = []
+
+        for chunk in self.diffs:
+            a.append(chunk.data_a)
+            if not chunk.eq:
+                a.append(chunk.data_b if hook_a_b is None else type(chunk.data_a)(map(hook_a_b, chunk.data_b)))
+                b.append(chunk.data_a if hook_b_a is None else type(chunk.data_b)(map(hook_b_a, chunk.data_a)))
+            b.append(chunk.data_b)
+
+        return reduce(add, a), reduce(add, b)
+
+    def with_data(self, data_a, data_b) -> "Diff":
+        """
+        Creates a diff with the same signature but different data.
+
+        Parameters
+        ----------
+        data_a
+        data_b
+            The new data.
+
+        Returns
+        -------
+        A diff with the new data.
+        """
+        return self.from_signature(self.signature, data_a, data_b)
 
     def to_string(self, prefix: str = "", uri_a: str = "a", uri_b: str = "b") -> str:
         preamble = f"{prefix}{uri_a}≈{uri_b} (ratio={self.ratio:.4f})"

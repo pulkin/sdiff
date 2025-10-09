@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from sdiff.chunk import Diff, Chunk, Signature, ChunkSignature
-from sdiff.numpy import diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff, dtype_diff
+from sdiff.numpy import (diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff, dtype_diff,
+                         align_inflate_arrays)
 
 from .util import np_chunk_eq, np_chunk_eq_aligned, np_raw_diff_eq
 
@@ -455,8 +456,8 @@ def test_dtype_diff():
     assert dtype_diff(d1, d2, min_ratio=0) == Diff(
         ratio=4./7,
         diffs=[
-            Chunk(data_a=[("ix", (i8, 0)), ("value_1", (f8, 8))], data_b=[("ix", (i8, 0)), ("value_3", (f8, 8))], eq=True),
-            Chunk(data_a=[("value_2", (f8, 16)), ("comment", (s32, 24))], data_b=[("value_2", (f4, 16))],
+            Chunk(data_a=[("ix", i8), ("value_1", f8)], data_b=[("ix", i8), ("value_3", f8)], eq=True),
+            Chunk(data_a=[("value_2", f8), ("comment", s32)], data_b=[("value_2", f4)],
                   eq=False),
         ]
     )
@@ -474,10 +475,10 @@ def test_dtype_diff_names():
     assert dtype_diff(d1, d2, names=True, min_ratio=0) == Diff(
         ratio=2./7,
         diffs=[
-            Chunk(data_a=[("ix", (i8, 0))], data_b=[("ix", (i8, 0))], eq=True),
+            Chunk(data_a=[("ix", i8)], data_b=[("ix", i8)], eq=True),
             Chunk(
-                data_a=[("value_1", (f8, 8)), ("value_2", (f8, 16)), ("comment", (s32, 24))],
-                data_b=[("value_3", (f8, 8)), ("value_2", (f4, 16))],
+                data_a=[("value_1", f8), ("value_2", f8), ("comment", s32)],
+                data_b=[("value_3", f8), ("value_2", f4)],
                 eq=False,
             ),
         ]
@@ -497,14 +498,14 @@ def test_dtype_diff_data():
     data_a = np.rec.fromarrays([_a, _a + 10, _a + 20, ["s"] * 11, _a + 30], dtype=d1)
     data_b = np.rec.fromarrays([_b + 10, ["x"] * 9, _b + 30, _b + 90, _b + 80], dtype=d2)
 
-    assert dtype_diff(d1, d2, min_ratio=0, data=(data_a, data_b)) == Diff(
+    assert dtype_diff(data_a, data_b, min_ratio=0) == Diff(
         ratio=0.4,
         diffs=[
-            Chunk(data_a=[("a1", (i8, 0))], data_b=[], eq=False),
-            Chunk(data_a=[("a2", (i8, 8))], data_b=[("b1", (i8, 0))], eq=True),
-            Chunk(data_a=[("a3", (i8, 16)), ("string", (s32, 24))], data_b=[("string", (s32, 8))], eq=False),
-            Chunk(data_a=[("a4", (i8, 56))], data_b=[("b2", (i8, 40))], eq=True),
-            Chunk(data_a=[], data_b=[("b3", (i8, 48)), ("b4", (i8, 56))], eq=False),
+            Chunk(data_a=[("a1", i8)], data_b=[], eq=False),
+            Chunk(data_a=[("a2", i8)], data_b=[("b1", i8)], eq=True),
+            Chunk(data_a=[("a3", i8), ("string", s32)], data_b=[("string", s32)], eq=False),
+            Chunk(data_a=[("a4", i8)], data_b=[("b2", i8)], eq=True),
+            Chunk(data_a=[], data_b=[("b3", i8), ("b4", i8)], eq=False),
         ]
     )
 
@@ -516,7 +517,7 @@ def test_dtype_diff_atomic_0():
     b = np.arange(1, 11)
 
     assert dtype_diff(a.dtype, b.dtype, data=(a, b)) == Diff(ratio=1, diffs=[
-        Chunk(data_a=[("f", (i8, 0))], data_b=[("f", (i8, 0))], eq=True),
+        Chunk(data_a=[("f", i8)], data_b=[("f", i8)], eq=True),
     ])
 
 
@@ -526,6 +527,35 @@ def test_dtype_diff_atomic_1():
     a = np.arange(12)
     b = np.arange(1, 11)
 
-    assert dtype_diff(a.dtype, b.dtype, data=(a, b), data_min_ratio=0.95) == Diff(ratio=0, diffs=[
-        Chunk(data_a=[("f", (i8, 0))], data_b=[("f", (i8, 0))], eq=False),
+    assert dtype_diff(a, b, data_min_ratio=0.95) == Diff(ratio=0, diffs=[
+        Chunk(data_a=[("f", i8)], data_b=[("f", i8)], eq=False),
     ])
+
+
+def test_align_inflate_arrays():
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
+    d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
+
+    _a = np.ones(shape=(3, 4), dtype=i8)
+    _as = np.full(fill_value="a", shape=(3, 4), dtype=s32)
+    _b = np.ones(shape=(5,), dtype=i8)
+    _bs = np.full(fill_value="b", shape=(5,), dtype=s32)
+
+    data_a = np.rec.fromarrays([_a, _a, _a, _as, _a], dtype=d1)
+    data_b = np.rec.fromarrays([_b, _bs, _b, _b, _b], dtype=d2)
+
+    d = dtype_diff(data_a, data_b, data=False)
+    assert d.ratio == 0.8
+
+    data_a_aligned, data_b_aligned = align_inflate_arrays(data_a, data_b, d)
+
+    # shape unchanged
+    assert data_a.shape == data_a_aligned.shape
+    assert data_b.shape == data_b_aligned.shape
+
+    # correct dtype
+    assert data_a_aligned.dtype == np.dtype([("a1", i8), ("y1", s32), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
+    assert data_b_aligned.dtype == np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("x1", s32), ("b4", i8)])
