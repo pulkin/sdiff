@@ -25,7 +25,7 @@ class TextDiff(AnyDiff):
     """
 
     def is_eq(self) -> bool:
-        return all(i.eq is True for i in self.data.diffs)
+        return all((i.eq is True and i.details is None) for i in self.data.diffs)
 
 
 @profile("text comparison")
@@ -81,27 +81,24 @@ def diff(
     if coarse:
         new_diffs = []
         for i in raw_diff.diffs:
-            if not isinstance(i.eq, bool):
-                new_eq = []
-                for j in i.eq:
-                    if isinstance(j, bool):
-                        new_eq.append(j)
-                    else:
-                        post_last = None
-                        if len(j.diffs) > 0:
-                            last = j.diffs[-1]
-                            if last.eq is True:
-                                a = last.data_a
-                                b = last.data_b
-                                last = replace(last, data_a=a.rstrip("\n"), data_b=b.rstrip("\n"))
-                                if last.data_a != a:
-                                    post_last = Chunk(eq=True, data_a=a[len(last.data_a):], data_b=b[len(last.data_b):])
-                            j = replace(j, diffs=j.diffs[:-1] + [last])
-                        coarse_diff = j.get_coarse(coarse)
-                        if post_last is not None:
-                            coarse_diff = replace(coarse_diff, diffs=coarse_diff.diffs + [post_last])
-                        new_eq.append(coarse_diff)
-                new_diffs.append(replace(i, eq=new_eq))
+            if i.eq:
+                new_details = []
+                for j in i.details:
+                    post_last = None
+                    if len(j.diffs) > 0:
+                        last = j.diffs[-1]
+                        if last.eq:
+                            a = last.data_a
+                            b = last.data_b
+                            last = replace(last, data_a=a.rstrip("\n"), data_b=b.rstrip("\n"))
+                            if last.data_a != a:
+                                post_last = Chunk(eq=True, data_a=a[len(last.data_a):], data_b=b[len(last.data_b):])
+                        j = replace(j, diffs=j.diffs[:-1] + [last])
+                    coarse_diff = j.get_coarse(coarse)
+                    if post_last is not None:
+                        coarse_diff = replace(coarse_diff, diffs=coarse_diff.diffs + [post_last])
+                    new_details.append(coarse_diff)
+                new_diffs.append(replace(i, details=new_details))
             else:
                 new_diffs.append(i)
         raw_diff = replace(raw_diff, diffs=new_diffs)

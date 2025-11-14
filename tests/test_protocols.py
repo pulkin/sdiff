@@ -11,10 +11,10 @@ def test_call_protocol():
 
     def graph(*args):
         log.append(args)
-        return 13
+        return 0.75
 
     comparison_backend = wrap(graph)
-    assert comparison_backend(40, 42) == 13
+    assert comparison_backend(40, 42) is True
     assert log == [(40, 42)]
 
 
@@ -141,30 +141,36 @@ def test_np_record():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
     comparison_backend = wrap((a, a))
-    assert comparison_backend(0, 0) == 1
-    assert comparison_backend(0, 1) == 1./3
-    assert comparison_backend(0, 2) == 1./3
-    assert comparison_backend(1, 2) == 0
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is False
+    assert comparison_backend(0, 2) is False
+    assert comparison_backend(1, 2) is False
+
+    comparison_backend = wrap((a, a), struct_threshold=0.1)
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is True
+    assert comparison_backend(0, 2) is True
+    assert comparison_backend(1, 2) is False
 
 
 def test_np_record_atol():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 10.), b"a"), (0, (1., 10.), b"b"), (1, (0., 10.), b"c")], dtype=dtype)
     comparison_backend = wrap((a, a), atol=1.5)
-    assert comparison_backend(0, 0) == 1
-    assert comparison_backend(0, 1) == 2./3
-    assert comparison_backend(0, 2) == 2./3
-    assert comparison_backend(1, 2) == 2./3
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is False
+    assert comparison_backend(0, 2) is False
+    assert comparison_backend(1, 2) is False
 
 
 def test_np_record_weights():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
-    comparison_backend = wrap((a, a), struct_weights=[3, 6, 9])
-    assert comparison_backend(0, 0) == 6
-    assert comparison_backend(0, 1) == 1
-    assert comparison_backend(0, 2) == 2
-    assert comparison_backend(1, 2) == 0
+    comparison_backend = wrap((a, a), struct_weights=[3, 6, 9], struct_threshold=1.5)
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is False
+    assert comparison_backend(0, 2) is True
+    assert comparison_backend(1, 2) is False
 
 
 @pytest.mark.xfail(reason="https://github.com/cython/cython/issues/7191")
@@ -192,7 +198,7 @@ def test_np_record_nested_1():
     comparison_backend = wrap((
         np.array([(0, cat, cat), (1, cat, bat), (2, bat, cat)], dtype=dtype),
         np.array([(2, bat, cat_), (0, cat_, bat)], dtype=dtype),
-    ))
-    assert comparison_backend(0, 0) == 1./6
-    assert comparison_backend(0, 1) == 0.5
-    assert comparison_backend(2, 0) == 5./6
+    ), struct_threshold=0.5)
+    assert comparison_backend(0, 0) is False
+    assert comparison_backend(0, 1) is True
+    assert comparison_backend(2, 0) is True

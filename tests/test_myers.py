@@ -20,7 +20,7 @@ MapBackend = build_inline_module(
       cdef const unsigned char[:, :] map
       def __init__(self, const unsigned char[:, :] map):
         self.map = map
-      cdef double compare(self, Py_ssize_t i, Py_ssize_t j):
+      cdef int compare(self, Py_ssize_t i, Py_ssize_t j):
         return self.map[i, j]
     """
 ).Backend

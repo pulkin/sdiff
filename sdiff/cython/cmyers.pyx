@@ -143,7 +143,6 @@ cdef Py_ssize_t _search_graph_recursive(
     Py_ssize_t n,
     Py_ssize_t m,
     ComparisonBackend comparison_backend,
-    const double accept,
     Py_ssize_t max_cost,
     Py_ssize_t max_calls,
     char eq_only,
@@ -164,7 +163,7 @@ cdef Py_ssize_t _search_graph_recursive(
 
     # strip matching ends of the sequence
     # forward
-    while n * m > 0 and comparison_backend.compare(i, j) >= accept:
+    while n * m > 0 and comparison_backend.compare(i, j):
         n_calls += 1
         ix = i + j
         if rtn_script:
@@ -175,7 +174,7 @@ cdef Py_ssize_t _search_graph_recursive(
         n -= 1
         m -= 1
     # ... and reverse
-    while n * m > 0 and comparison_backend.compare(i + n - 1, j + m - 1) >= accept:
+    while n * m > 0 and comparison_backend.compare(i + n - 1, j + m - 1):
         n_calls += 1
         ix = i + j + n + m - 2
         if rtn_script:
@@ -237,7 +236,7 @@ cdef Py_ssize_t _search_graph_recursive(
             # slide down the progress coordinate
             while 0 <= x < n and 0 <= y < m:
                 n_calls += 1
-                if comparison_backend.compare(x + i, y + j) < accept:
+                if not comparison_backend.compare(x + i, y + j):
                     break
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
@@ -285,7 +284,6 @@ cdef Py_ssize_t _search_graph_recursive(
                             n=x,
                             m=y,
                             comparison_backend=comparison_backend,
-                            accept=accept,
                             max_cost=cost // 2 + cost % 2,
                             max_calls=max_calls,
                             eq_only=0,
@@ -299,7 +297,6 @@ cdef Py_ssize_t _search_graph_recursive(
                             n=n - x2,
                             m=m - y2,
                             comparison_backend=comparison_backend,
-                            accept=accept,
                             max_cost=cost // 2,
                             max_calls=max_calls,
                             eq_only=0,
@@ -340,7 +337,6 @@ def search_graph_recursive(
     Py_ssize_t m,
     ComparisonBackend comparison_backend,
     out=None,
-    double accept=1,
     Py_ssize_t max_cost=0xFFFFFFFF,
     Py_ssize_t max_calls=0xFFFFFFFF,
     char eq_only=0,
@@ -366,7 +362,6 @@ def search_graph_recursive(
             n=n,
             m=m,
             comparison_backend=comparison_backend,
-            accept=accept,
             max_cost=max_cost,
             max_calls=max_calls,
             eq_only=eq_only,

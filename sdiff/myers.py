@@ -146,7 +146,6 @@ def search_graph_recursive(
         m: int,
         comparison_backend: Callable[[int, int], float],
         out: array = None,
-        accept: float = 1,
         max_cost: int = MAX_COST,
         max_calls: int = MAX_CALLS,
         eq_only: bool = False,
@@ -183,8 +182,6 @@ def search_graph_recursive(
         - 1 for horizontal moves ("deletions")
         - 2 for vertical moves ("additions")
         - 3 followed by zero for diagonal moves ("same").
-    accept
-        The minimal similarity ratio to accept as "equal".
     max_cost
         The maximal allowed cost of the graph path
         (edit script). This has the meaning of the
@@ -226,7 +223,7 @@ def search_graph_recursive(
     # preventing the possibility of an infinite recursion
 
     # forward
-    while n * m > 0 and comparison_backend(i, j) >= accept:
+    while n * m > 0 and comparison_backend(i, j):
         n_calls += 1
         ix = i + j
         if out is not None:
@@ -238,7 +235,7 @@ def search_graph_recursive(
         m -= 1
 
     # ... and reverse
-    while n * m > 0 and comparison_backend(i + n - 1, j + m - 1) >= accept:
+    while n * m > 0 and comparison_backend(i + n - 1, j + m - 1):
         n_calls += 1
         ix = i + j + n + m - 2
         if out is not None:
@@ -278,7 +275,7 @@ def search_graph_recursive(
     maximal possible number of diagonal moves that come for free.
     In the present implementation, diagonal edges are defined implicitly:
     the digaonal move ``(i, j) -> (i + 1, j + 1)`` is present if
-    (and only if) ``diag(i, j) >= accept``.
+    (and only if) ``bool(diag(i, j))``.
     
     A generic breadth-first search will work here but it requires ``O(n * m)``
     memory to remember the cost of reaching each of the nodes on the grid.
@@ -366,7 +363,7 @@ def search_graph_recursive(
             # slide down the progress coordinate
             while 0 <= x < n and 0 <= y < m:
                 n_calls += 1
-                if comparison_backend(x + i, y + j) < accept:
+                if not comparison_backend(x + i, y + j):
                     break
                 progress += 2 * reverse_as_sign
                 x += reverse_as_sign
@@ -411,7 +408,6 @@ def search_graph_recursive(
                             m=y,
                             comparison_backend=comparison_backend,
                             out=out,
-                            accept=accept,
                             max_cost=cost // 2 + cost % 2,
                             i=i,
                             j=j,
@@ -421,7 +417,6 @@ def search_graph_recursive(
                             m=m - y2,
                             comparison_backend=comparison_backend,
                             out=out,
-                            accept=accept,
                             max_cost=cost // 2,
                             i=i + x2,
                             j=j + y2,

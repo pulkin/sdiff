@@ -85,39 +85,11 @@ def test_fuzz(kernel, eq_only):
     assert diff(a, b, kernel=kernel, min_ratio=0.425, eq_only=eq_only).ratio == 0.425
 
 
-@pytest.mark.parametrize("kernel", ["py", "c"])
-def test_equal_str_nested_emulation(kernel):
-    a, b = ["alice1", "bob1", "xxx"], ["alice2", "bob2"]
-
-    def _eq(i: int, j: int):
-        return diff(a[i], b[j], eq_only=True)
-
-    def _dig(i: int, j: int):
-        return diff(a[i], b[j])
-
-    assert diff(a, b, kernel=kernel, eq=_eq, dig=_dig) == Diff(
-        ratio=0.8,
-        diffs=[
-            Chunk(data_a=["alice1", "bob1"], data_b=["alice2", "bob2"], eq=[
-                Diff(ratio=5 / 6, diffs=[
-                    Chunk(data_a="alice", data_b="alice", eq=True),
-                    Chunk(data_a="1", data_b="2", eq=False),
-                ]),
-                Diff(ratio=3 / 4, diffs=[
-                    Chunk(data_a="bob", data_b="bob", eq=True),
-                    Chunk(data_a="1", data_b="2", eq=False),
-                ]),
-            ]),
-            Chunk(data_a=["xxx"], data_b=[], eq=False),
-        ],
-    )
-
-
 def test_equal_str_nested_recursive():
     assert diff_nested(["alice1", "bob1", "xxx"], ["alice2", "bob2"]) == Diff(
         ratio=0.8,
         diffs=[
-            Chunk(data_a=["alice1", "bob1"], data_b=["alice2", "bob2"], eq=[
+            Chunk(data_a=["alice1", "bob1"], data_b=["alice2", "bob2"], eq=True, details=[
                 Diff(ratio=5 / 6, diffs=[
                     Chunk(data_a="alice", data_b="alice", eq=True),
                     Chunk(data_a="1", data_b="2", eq=False),
@@ -144,7 +116,7 @@ def test_complex_nested():
     assert diff_nested(a, b, min_ratio=0.5) == Diff(
         ratio=2 / 3,
         diffs=[
-            Chunk(data_a=["alice1", "bob1"], data_b=["alice2", "bob2"], eq=[
+            Chunk(data_a=["alice1", "bob1"], data_b=["alice2", "bob2"], eq=True, details=[
                 Diff(ratio=5 / 6, diffs=[
                     Chunk(data_a="alice", data_b="alice", eq=True),
                     Chunk(data_a="1", data_b="2", eq=False),
@@ -155,14 +127,14 @@ def test_complex_nested():
                 ]),
             ]),
             Chunk(data_a=["xxx"], data_b=[], eq=False),
-            Chunk(data_a=[[0, 1, 2, "charlie1"]], data_b=[[0, 2, "charlie2"]], eq=[
+            Chunk(data_a=[[0, 1, 2, "charlie1"]], data_b=[[0, 2, "charlie2"]], eq=True, details=[
                 Diff(
                     ratio=6 / 7,
                     diffs=[
-                        Chunk(data_a=[0], data_b=[0], eq=True),
+                        Chunk(data_a=[0], data_b=[0], eq=True, details=[True]),
                         Chunk(data_a=[1], data_b=[], eq=False),
-                        Chunk(data_a=[2], data_b=[2], eq=True),
-                        Chunk(data_a=["charlie1"], data_b=["charlie2"], eq=[
+                        Chunk(data_a=[2, "charlie1"], data_b=[2, "charlie2"], eq=True, details=[
+                            True,
                             Diff(
                                 ratio=7 / 8,
                                 diffs=[
@@ -189,7 +161,15 @@ def test_complex_nested_raw():
 
 def test_nested_same():
     a = ["alice1", "bob1", "xxx", [0, 1, 2, "charlie1", []], [5, 6, 7]]
-    assert diff_nested(a, a) == Diff(ratio=1.0, diffs=[Chunk(data_a=a, data_b=a, eq=True)])
+    assert diff_nested(a, a) == Diff(ratio=1.0, diffs=[Chunk(data_a=a, data_b=a, eq=True, details=[
+        Diff(ratio=1.0, diffs=[Chunk(data_a='alice1', data_b='alice1', eq=True)]),
+        Diff(ratio=1.0, diffs=[Chunk(data_a='bob1', data_b='bob1', eq=True)]),
+        Diff(ratio=1.0, diffs=[Chunk(data_a='xxx', data_b='xxx', eq=True)]),
+        Diff(ratio=1.0, diffs=[Chunk(data_a=[0, 1, 2, "charlie1", []], data_b=[0, 1, 2, "charlie1", []], eq=True, details=[
+            True, True, True, Diff(ratio=1.0, diffs=[Chunk(data_a='charlie1', data_b='charlie1', eq=True)]), Diff(ratio=1.0, diffs=[]),
+        ])]),
+        Diff(ratio=1.0, diffs=[Chunk(data_a=[5, 6, 7], data_b=[5, 6, 7], eq=True, details=[True, True, True])]),
+    ])])
 
 
 def test_nested_cyclic():
@@ -206,33 +186,18 @@ def test_nested_cost():
     a = [[0] * 10, [1] * 10, [2] * 10, [3] * 10]
     b = [[0] * 9 + [None], [1] * 8 + [None] * 2, [2] * 7 + [None] * 3, [3] * 6 + [None] * 4]
     assert diff_nested(a, b, min_ratio=(0.5, 0.8)) == Diff(
-        ratio=0.5,
-        diffs=[
-            Chunk(
-                data_a=a[:2],
-                data_b=b[:2],
-                eq=[
-                    Diff(
-                        ratio=0.9,
-                        diffs=[
-                            Chunk(data_a=[0] * 9, data_b=[0] * 9, eq=True),
-                            Chunk(data_a=[0], data_b=[None], eq=False),
-                        ],
-                    ),
-                    Diff(
-                        ratio=0.8,
-                        diffs=[
-                            Chunk(data_a=[1] * 8, data_b=[1] * 8, eq=True),
-                            Chunk(data_a=[1] * 2, data_b=[None] * 2, eq=False),
-                        ],
-                    ),
-                ],
-            ),
-            Chunk(
-                data_a=a[2:],
-                data_b=b[2:],
-                eq=False,
-            )
+        ratio=0.5, diffs=[
+            Chunk(data_a=a[:2], data_b=b[:2], eq=True, details=[
+                Diff(ratio=0.9, diffs=[
+                    Chunk(data_a=[0] * 9, data_b=[0] * 9, eq=True, details=[True] * 9),
+                    Chunk(data_a=[0], data_b=[None], eq=False),
+                ]),
+                Diff(ratio=0.8, diffs=[
+                    Chunk(data_a=[1] * 8, data_b=[1] * 8, eq=True, details=[True] * 8),
+                    Chunk(data_a=[1] * 2, data_b=[None] * 2, eq=False),
+                ]),
+            ]),
+            Chunk(data_a=a[2:], data_b=b[2:], eq=False),
         ]
     )
 
@@ -256,15 +221,15 @@ def test_nested_np(monkeypatch, max_depth):
     assert diff_nested(a, b, min_ratio=0.1) == Diff(
         ratio=5. / 6,
         diffs=[
-            Chunk(data_a=a[:1], data_b=b[:1], eq=True),
-            Chunk(data_a=a[1:2], data_b=b[1:2], eq=[
+            Chunk(data_a=a[:3], data_b=b[:3], eq=True, details=[
+                None,
                 Diff(ratio=2 / 3, diffs=[
                     Chunk(data_a=np.array([3]), data_b=np.array([3]), eq=True),
                     Chunk(data_a=np.array([4]), data_b=np.array([9]), eq=False),
                     Chunk(data_a=np.array([5]), data_b=np.array([5]), eq=True),
                 ]),
+                None,
             ]),
-            Chunk(data_a=a[2:3], data_b=b[2:3], eq=True),
             Chunk(data_a=a[3:4], data_b=b[3:4], eq=False),
             Chunk(data_a=a[4:], data_b=b[4:], eq=True),
         ]
@@ -320,7 +285,7 @@ def test_bug_1():
 def test_empty_nested_0():
     assert diff_nested([[]], [[]]) == Diff(
         ratio=1.0,
-        diffs=[Chunk(data_a=[[]], data_b=[[]], eq=True)],
+        diffs=[Chunk(data_a=[[]], data_b=[[]], eq=True, details=[Diff(ratio=1.0, diffs=[])])],
     )
 
 

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Callable, Any
 from array import array
 from functools import reduce
 from operator import mul
@@ -17,7 +17,7 @@ CLASS_DEF = (
 COMPARE_DEF = (
     "  @cython.initializedcheck(False)",
     "  @cython.wraparound(False)",
-    "  cdef double compare(self, Py_ssize_t i, Py_ssize_t j):",
+    "  cdef int compare(self, Py_ssize_t i, Py_ssize_t j):",
 )
 COMPARE_SIMPLE = (
     "    return self.a[i] == self.b[j]",
@@ -25,6 +25,11 @@ COMPARE_SIMPLE = (
 COMPARE_ABS = (
     "    cdef double delta = self.a[i] - self.b[j]",
     "    return (delta >= -self.atol) and (delta <= self.atol)",
+)
+RESOLVE_DEF = (
+    "  @cython.initializedcheck(False)",
+    "  @cython.wraparound(False)",
+    "  def resolve(self, Py_ssize_t i, Py_ssize_t j):",
 )
 
 
@@ -45,15 +50,15 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
 
 
 def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_weights: Optional[array] = None,
-         **kwargs):
+         struct_threshold: float = 0.749, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
     """
-    Figures out the compare protocol from the provided argument.
+    Assembles the compare protocol from the provided argument.
 
     Parameters
     ----------
     arg
         The object to wrap into comparison backend. Can be
-        - either a pair of array-like objects
+        - either a pair of indexable objects
         - or a callable(i, j)
     allow_python
         If set to True, will allow (slow) python kernels for
@@ -63,6 +68,12 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
         instead of the equality comparison ``a[i] == b[j]``.
     struct_weights
         Optional weights for structure type comparison.
+    struct_threshold
+        The threshold for equal structs.
+    resolver
+        An optional callable(i, j) comparing two elements in details.
+        This callable will be used to populate the "details" field
+        of the resulting diff.
     kwargs
         Build arguments.
 
@@ -170,7 +181,7 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                                         _eq = f"({_eq}) * weights[{_i}]"
                                     _code.append(f"  {_indent}{_accumulator} += {_eq}")
                                 elif isinstance(_field.type, StructType):
-                                    _args = f"a.f{_i}{_index}, b.f{_i}{_index}"
+                                    _args = f"a.f{_i}{_index}, b.f{_i}{_index}, threshold"
                                     if atol is not None:
                                         _args += ", atol"
                                     _code.append(f"  {_indent}{_accumulator} += compare_{_types[_field.type]}({_args})")
@@ -184,13 +195,13 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                                     if do_weights:
                                         _eq = f"({_eq}) * weights[{_i}]"
                                     _code.append(f"  result += {_eq}")
-                            _args = f"const {name} a, const {name} b"
+                            _args = f"const {name} a, const {name} b, const double threshold"
                             if do_weights:
                                 _args += ", const double[:] weights"
                             if atol is not None:
                                 _args += ", const double atol"
                             source_code.extend([
-                                f"cdef double compare_{name}({_args}):",
+                                f"cdef int compare_{name}({_args}):",
                                 f"  cdef double result = 0",
                             ])
                             if _need_temp:
@@ -202,7 +213,7 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                                 _postfix = ""
                             else:
                                 _postfix = f" / {len(t.fields)}"
-                            source_code.append(f"  return result{_postfix}")
+                            source_code.append(f"  return result{_postfix} >= threshold")
                             return name
                         else:
                             raise ValueError(f"unknown type: {t}")
@@ -220,7 +231,10 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                             (f"const {dtype_str}[:]", "b"),
                         ]
                         if isinstance(struct_a, StructType):
-                            _vars.append(("const double[:]", "weights"))
+                            _vars.extend([
+                                ("double", "threshold"),
+                                ("const double[:]", "weights"),
+                            ])
 
                     if mem_a.ndim == 1:
                         if atol is not None:
@@ -233,11 +247,12 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                         if isinstance(struct_a, AtomicType):
                             source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
                         elif isinstance(struct_a, StructType):
-                            _args = "self.a[i], self.b[j], self.weights"
+                            _args = "self.a[i], self.b[j], self.threshold, self.weights"
                             if atol is not None:
                                 _args += ", self.atol"
                             if struct_weights is None:
                                 struct_weights = array('d', [1.] * len(struct_a.fields))
+                            init_args["threshold"] = struct_threshold
                             init_args["weights"] = array('d', struct_weights)
                             source_code.append(f"    return compare_{dtype_str}({_args})")
                         else:
@@ -262,12 +277,25 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
     else:
-        source_code.extend(CLASS_DEF)
-        source_code.extend(compose_init([
+        init_args = {
+            "callable": arg,
+        }
+        _vars = [
             ("object", "callable"),
-        ]))
-        source_code.extend(COMPARE_DEF)
-        source_code.append(
-            "    return self.callable(i, j)",
-        )
-        return build_inline_module("\n".join(source_code), *kwargs).Backend(arg)
+        ]
+        if resolver is not None:
+            init_args["resolver"] = resolver
+            _vars.append(("object", "resolver"))
+
+        source_code.extend([
+            *CLASS_DEF,
+            *compose_init(_vars),
+            *COMPARE_DEF,
+            "    return bool(self.callable(i, j))",
+        ])
+        if resolver is not None:
+            source_code.extend([
+                *RESOLVE_DEF,
+                "    return self.resolver(i, j)",
+            ])
+        return build_inline_module("\n".join(source_code), *kwargs).Backend(**init_args)

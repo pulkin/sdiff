@@ -1,8 +1,7 @@
-from collections.abc import Sequence, MutableSequence
+from collections.abc import Sequence, MutableSequence, Generator
 from typing import Optional, Union
 from array import array
 from itertools import groupby
-from warnings import warn
 
 from .chunk import Diff, Chunk
 from .myers import search_graph_recursive as pymyers, MAX_COST, MAX_CALLS, MIN_RATIO
@@ -31,7 +30,6 @@ def diff(
         b: Sequence[object],
         eq=None,
         atol: Optional[float] = None,
-        accept: float = MIN_RATIO,
         min_ratio: float = MIN_RATIO,
         max_cost: int = MAX_COST,
         max_calls: int = MAX_CALLS,
@@ -61,8 +59,6 @@ def diff(
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
-    accept
-        The lower threshold for the equality measure.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -92,8 +88,9 @@ def diff(
         perform a full diff and store codes into the provided array
         while the returned object will be the same as rtn_diff=False.
     dig
-        Once set to ``fun(i, j)``, the values of ``Chunk.eq`` in the
-        output will be replaced by the values returned by the function.
+        An optional callable(i, j) comparing two elements in details.
+        This callable will be used to populate the "details" field
+        of the resulting diff.
     strict
         If True, ensures that the returned diff either satisfies both
         min_ratio and max_cost or otherwise has a zero ratio.
@@ -114,8 +111,6 @@ def diff(
         _a, _b = eq
         assert len(_a) == n
         assert len(_b) == m
-        if accept <= 0:
-            raise ValueError(f"{accept=} has to be strictly positive in atomic comparison")
     if isinstance(rtn_diff, array):
         codes = rtn_diff
         rtn_diff = False
@@ -124,10 +119,13 @@ def diff(
     else:
         codes = None
 
-    if not rtn_diff and dig is not None:
-        warn("using dig=... has no effect when rtn_diff=False or array")
-
     _kernel = _kernels[kernel]
+    backend = wrap(
+        arg=eq,
+        allow_python=not no_python,
+        atol=atol,
+        resolver=dig,
+    )
 
     total_len = n + m
     if total_len == 0:
@@ -138,12 +136,7 @@ def diff(
     cost = _kernel(
         n=n,
         m=m,
-        comparison_backend=wrap(
-            arg=eq,
-            allow_python=not no_python,
-            atol=atol,
-        ),
-        accept=accept,
+        comparison_backend=backend,
         max_cost=max_cost,
         eq_only=eq_only,
         max_calls=max_calls,
@@ -161,7 +154,7 @@ def diff(
         canonize(codes)
         return Diff(
             ratio=ratio,
-            diffs=list(codes_to_chunks(a, b, codes, dig=dig)),
+            diffs=list(codes_to_chunks(a, b, codes, dig=backend.resolve)),
         )
     else:
         return Diff(ratio=ratio, diffs=None)
@@ -195,7 +188,7 @@ def canonize(codes: MutableSequence[int]):
             n_horizontal = n_vertical = 0
 
 
-def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) -> list[Chunk]:
+def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) -> Generator[Chunk, None, None]:
     """
     Given the original sequences and diff codes, produces diff chunks.
 
@@ -220,39 +213,34 @@ def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) ->
         if code != 0),
         key=lambda x: bool(x % 3),
     ):
+        eq = not neq
         n = offset_a
         m = offset_b
         for code in code_group:
             n += code % 2
             m += code // 2
 
-        if neq or dig is None:
-            yield Chunk(
-                data_a=a[offset_a:n],
-                data_b=b[offset_b:m],
-                eq=not neq,
-            )
+        _a = a[offset_a:n]
+        _b = b[offset_b:m]
+        details = None
+        if eq and dig is not None:
+            try:
+                details = [
+                    dig(i, j)
+                    for i, j in zip(range(offset_a, n), range(offset_b, m))
+                ]
+            except NotImplementedError:
+                dig = None
 
-            offset_a = n
-            offset_b = m
+        yield Chunk(
+            data_a=_a,
+            data_b=_b,
+            eq=eq,
+            details=details,
+        )
 
-        else:
-            for key, dig_group in groupby(
-                (dig(*pair) for pair in zip(range(offset_a, n), range(offset_b, m))),
-                key=lambda x: x is True  # either True or nested Diffs
-            ):
-                eq = list(dig_group)
-                n = len(eq) + offset_a
-                m = len(eq) + offset_b
-
-                yield Chunk(
-                    data_a=a[offset_a:n],
-                    data_b=b[offset_b:m],
-                    eq=key or eq,  # True or list of nested Diffs
-                )
-
-                offset_a = n
-                offset_b = m
+        offset_a = n
+        offset_b = m
 
 
 def _pop_optional(seq):
@@ -345,7 +333,6 @@ def diff_nested(
     min_ratio_here, min_ratio_pass = _pop_optional(min_ratio)
     max_cost_here, max_cost_pass = _pop_optional(max_cost)
     max_calls_here, max_calls_pass = _pop_optional(max_calls)
-    accept, _ = _pop_optional(min_ratio_pass)
 
     if max_depth <= 1:
         return diff(
@@ -388,7 +375,7 @@ def diff_nested(
 
             if rtn_diff and not isinstance(rtn_diff, array):
                 def _dig(i: int, j: int):
-                    _dig_result = diff_nested(
+                    return diff_nested(
                         a=a[i],
                         b=b[j],
                         eq=(a_[i], b_[j]),
@@ -404,16 +391,11 @@ def diff_nested(
                         _blacklist_a=_blacklist_a,
                         _blacklist_b=_blacklist_b,
                     )
-                    try:
-                        return bool(_dig_result)
-                    except ValueError:
-                        return _dig_result
             else:
                 _dig = None
 
         elif issubclass(container_type, Sequence):  # inputs are containers but we do not recognize them as, potentially, nested
             _eq = (a_, b_)
-            accept = 1
             _dig = None
 
         else:  # inputs are not containers
@@ -427,7 +409,6 @@ def diff_nested(
         b=b,
         eq=_eq,
         atol=atol,
-        accept=accept,
         min_ratio=min_ratio_here,
         max_cost=max_cost_here,
         max_calls=max_calls_here,

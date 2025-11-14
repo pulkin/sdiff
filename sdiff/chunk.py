@@ -1,6 +1,7 @@
 import itertools
+from itertools import groupby
 from typing import Any, Optional, Union
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Sequence, Generator
 from functools import reduce, cached_property
 from operator import add
 from dataclasses import dataclass
@@ -89,7 +90,8 @@ class Chunk:
     """
     data_a: Sequence[Any]
     data_b: Sequence[Any]
-    eq: Union[bool, Sequence[Union[bool, "Diff"]]]
+    eq: bool
+    details: Optional[Sequence["Diff"]] = None
 
     def to_string(
             self,
@@ -143,10 +145,15 @@ class Chunk:
             data_a=self.data_a + other.data_a,
             data_b=self.data_b + other.data_b,
             eq=self.eq and other.eq,
+            details=(
+                self.details + other.details
+                if self.details is not None and other.details is not None
+                else None
+            ),
         )
 
 
-def iter_compressed_chunks(chunks: Iterable[Chunk]) -> Iterator[Chunk]:
+def iter_chunks_compressed(chunks: Iterable[Chunk]) -> Generator[Chunk, None, None]:
     """
     Iterates through compressed chunks of differences.
 
@@ -167,7 +174,7 @@ def iter_compressed_chunks(chunks: Iterable[Chunk]) -> Iterator[Chunk]:
         yield reduce(add, group)
 
 
-def iter_coarse_chunks(chunks: Iterable[Chunk], consume_size: int) -> Iterable[Chunk]:
+def iter_chunks_coarse(chunks: Iterable[Chunk], consume_size: int) -> Generator[Chunk, None, None]:
     """
     Iterates over chunks of differences and merges smaller equal chunks into
     bigger non-equal ones.
@@ -185,7 +192,7 @@ def iter_coarse_chunks(chunks: Iterable[Chunk], consume_size: int) -> Iterable[C
     A generator yielding bigger `Chunk` objects.
     """
     buffer = []
-    for chunk in iter_compressed_chunks(chunks):
+    for chunk in iter_chunks_compressed(chunks):
         if chunk.eq and len(chunk.data_a) > consume_size:
             if buffer:
                 yield reduce(add, buffer)
@@ -196,6 +203,109 @@ def iter_coarse_chunks(chunks: Iterable[Chunk], consume_size: int) -> Iterable[C
 
     if buffer:
         yield reduce(add, buffer)
+
+
+def iter_chunks_verbose(chunks: Iterable[Chunk]) -> Generator[tuple[bool, bool, Chunk], None, None]:
+    """
+    Iterates over chunks and yields them together with two booleans: "equal" and "exact".
+    The "equal" boolean has the same meaning as `Chunk.eq`: it tells whether the sub-sequences are aligned.
+    The "exact" boolean tells whether an "equal" (aligned) Chunk is equal "exactly" or "approximately".
+
+    Parameters
+    ----------
+    chunks
+        Input chunks.
+
+    Yields
+    ------
+    Two boolean flags and a Chunk.
+    """
+    def _key(_sub_diff):
+        if isinstance(_sub_diff, Diff):
+            return _sub_diff.ratio == 1
+        return _sub_diff.all()  # TODO: remove array work-around
+
+    for chunk in chunks:
+        if not chunk.eq:
+            yield chunk.eq, False, chunk
+        elif chunk.details is None:
+            yield chunk.eq, True, chunk
+        else:
+            i = 0
+            for is_exact, details in groupby(chunk.details, key=_key):
+                details = list(details)
+                j = len(details) + i
+                yield chunk.eq, is_exact, Chunk(data_a=chunk.data_a[i:j], data_b=chunk.data_b[i:j], eq=chunk.eq, details=details)
+                i = j
+
+
+def iter_chunks_important(chunks: Iterable[Chunk], context_size: int = 0) -> Generator[Union["Item", int], None, None]:
+    """
+    Iterates over non-equal item pairs.
+
+    Parameters
+    ----------
+    chunks
+        Input chunks.
+    context_size
+        The number of equal pairs to provide the context
+        while yielding non-equal pairs.
+
+    Yields
+    ------
+    Diff items or integers specifying the number of skipped item pairs.
+    """
+    def _dummy():
+        return
+        yield
+
+    def _head(data_a, counter_a, data_b, counter_b):
+        for (i, a), (j, b) in zip(
+            enumerate(data_a[:context_size], counter_a),
+            enumerate(data_b[:context_size], counter_b),
+        ):
+            yield Item(a=a, b=b, ix_a=i, ix_b=j)
+
+    def _tail(data_a, counter_a, data_b, counter_b, head_size):
+        gap = len(data_a) - context_size - head_size
+        if gap > 0:
+            yield gap
+        else:
+            gap = 0
+        gap += head_size
+        for (i, a), (j, b) in zip(
+            enumerate(data_a[gap:], counter_a + gap),
+            enumerate(data_b[gap:], counter_b + gap),
+        ):
+            yield Item(a=a, b=b, ix_a=i, ix_b=j)
+
+    context_tail = _dummy()
+    counter_a = counter_b = 0
+
+    for i_chunk, (is_eq, is_exact, chunk) in enumerate(iter_chunks_verbose(chunks)):
+
+        if is_eq:
+            if not is_exact:
+                yield from context_tail
+                for i, (a, b, diff) in enumerate(zip(chunk.data_a, chunk.data_b, chunk.details)):
+                    yield Item(a=a, b=b, ix_a=counter_a + i, ix_b=counter_b + i, diff=diff)
+            else:  # chunks are equal: take care of context
+                if i_chunk:  # this is NOT the beginning of text: yield context
+                    yield from _head(chunk.data_a, counter_a, chunk.data_b, counter_b)
+                context_tail = _tail(chunk.data_a, counter_a, chunk.data_b, counter_b, bool(i_chunk) * context_size)
+        else:  # chunks are not equal: yield them all
+            yield from context_tail
+            for i, a in enumerate(chunk.data_a, counter_a):
+                yield Item(a=a, b=None, ix_a=i, ix_b=None)
+            for j, b in enumerate(chunk.data_b, counter_b):
+                yield Item(a=None, b=b, ix_a=None, ix_b=j)
+
+        counter_a += len(chunk.data_a)
+        counter_b += len(chunk.data_b)
+
+    leftover = sum(i if isinstance(i, int) else 1 for i in context_tail)
+    if leftover:
+        yield leftover
 
 
 CrossHookType = Callable[[Any], Any]
@@ -250,36 +360,8 @@ class Diff:
             raise ValueError(f"{len(data_b)=}; expected: {offset_b}")
         return Diff(ratio=sig.ratio, diffs=diffs)
 
-    def __float__(self):
-        return float(self.ratio)
-
-    def __le__(self, other):
-        return float(self) <= other
-
-    def __lt__(self, other):
-        return float(self) < other
-
-    def __ge__(self, other):
-        return float(self) >= other
-
-    def __gt__(self, other):
-        return float(self) > other
-
     def __bool__(self):
-        if self.diffs is None:
-            raise ValueError("no diff information available")
-        if len(self.diffs) == 0:
-            return True
-        elif len(self.diffs) == 1:
-            c, = self.diffs
-            if c.eq is True:
-                return True
-            elif c.eq is False:
-                return False
-            else:
-                raise ValueError(f"a nested diff cannot be cast to a bool; inner diff: {c.eq}")
-        else:
-            raise ValueError(f"a non-trivial diff cannot be cast to a bool ({len(self.diffs)} chunks)")
+        return bool(self.ratio)
 
     def get_a(self):
         """
@@ -370,75 +452,6 @@ class Diff:
             raise ValueError("no diff data")
         return Signature(parts=tuple(i.signature for i in self.diffs))
 
-    def iter_important(self, context_size: int = 0) -> Iterator[Union["Item", int]]:
-        """
-        Iterates over non-equal item pairs.
-
-        Parameters
-        ----------
-        context_size
-            The number of equal pairs to provide the context
-            while yielding non-equal pairs.
-
-        Yields
-        ------
-        Diff items and integers specifying the number of skipped
-        item pairs in-between.
-        """
-        def _dummy():
-            return
-            yield
-
-        def _head(data_a, counter_a, data_b, counter_b):
-            for (i, a), (j, b) in zip(
-                enumerate(data_a[:context_size], counter_a),
-                enumerate(data_b[:context_size], counter_b),
-            ):
-                yield Item(a=a, b=b, ix_a=i, ix_b=j)
-
-        def _tail(data_a, counter_a, data_b, counter_b, head_size):
-            gap = len(data_a) - context_size - head_size
-            if gap > 0:
-                yield gap
-            else:
-                gap = 0
-            gap += head_size
-            for (i, a), (j, b) in zip(
-                enumerate(data_a[gap:], counter_a + gap),
-                enumerate(data_b[gap:], counter_b + gap),
-            ):
-                yield Item(a=a, b=b, ix_a=i, ix_b=j)
-
-        context_tail = _dummy()
-        counter_a = counter_b = 0
-
-        for i_chunk, chunk in enumerate(self.diffs):
-
-            if not isinstance(chunk.eq, Iterable):  # bool
-                if chunk.eq:  # chunks are equal: take care of context
-                    if i_chunk:  # this is NOT the beginning of text: yield context
-                        yield from _head(chunk.data_a, counter_a, chunk.data_b, counter_b)
-                    context_tail = _tail(chunk.data_a, counter_a, chunk.data_b, counter_b, bool(i_chunk) * context_size)
-
-                else:  # chunks are not equal: yield them all
-                    yield from context_tail
-                    for i, a in enumerate(chunk.data_a, counter_a):
-                        yield Item(a=a, b=None, ix_a=i, ix_b=None)
-                    for j, b in enumerate(chunk.data_b, counter_b):
-                        yield Item(a=None, b=b, ix_a=None, ix_b=j)
-
-            else:  # chunks are aligned
-                yield from context_tail
-                for i, (a, b, diff) in enumerate(zip(chunk.data_a, chunk.data_b, chunk.eq)):
-                    yield Item(a=a, b=b, ix_a=counter_a + i, ix_b=counter_b + i, diff=diff)
-
-            counter_a += len(chunk.data_a)
-            counter_b += len(chunk.data_b)
-
-        leftover = sum(i if isinstance(i, int) else 1 for i in context_tail)
-        if leftover:
-            yield leftover
-
     def get_coarse(self, consume_size: int) -> "Diff":
         """
         Computes a coarse diff by merging smaller equal chunks into non-equal ones.
@@ -452,7 +465,7 @@ class Diff:
         -------
         The resulting diff.
         """
-        return Diff(ratio=self.ratio, diffs=list(iter_coarse_chunks(self.diffs, consume_size)))
+        return Diff(ratio=self.ratio, diffs=list(iter_chunks_coarse(self.diffs, consume_size)))
 
 
 @dataclass(frozen=True)

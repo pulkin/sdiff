@@ -424,11 +424,8 @@ def get_row_col_diff(
     row_sig = base_diff.signature
     in_row_diff = []
     for chunk in base_diff.diffs:
-        if chunk.eq is True:
-            for i, j in zip(chunk.data_a, chunk.data_b):
-                in_row_diff.append(Diff(ratio=1.0, diffs=[Chunk(data_a=i, data_b=j, eq=True)]))
-        elif chunk.eq is not False:
-            in_row_diff.extend(chunk.eq)
+        if chunk.eq:
+            in_row_diff.extend(chunk.details)
     col_sig = common_diff_sig(a.shape[1], b.shape[1], in_row_diff)
     return row_sig, col_sig
 
@@ -568,7 +565,8 @@ class NumpyDiff(NamedTuple):
                 chunks.append(Chunk(
                     data_a=self.a[offset:to][rows_a[offset:to]],
                     data_b=self.b[offset:to][rows_b[offset:to]],
-                    eq=True if key == 2 else self.eq[offset:to],  # TODO re-think what values Chunk.eq can take
+                    eq=True,
+                    details=None if key == 2 else self.eq[offset:to],
                 ))
             offset = to
 
@@ -690,8 +688,8 @@ def diff_aligned_2d(
                 (np.core.records.fromarrays(a_.T), np.core.records.fromarrays(b_.T)),
                 atol=atol,
                 struct_weights=mask,
+                struct_threshold=min_ratio_row,
             ),
-            accept=min_ratio_row,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
             max_calls=max_calls_here,

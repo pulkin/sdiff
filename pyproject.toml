@@ -31,7 +31,6 @@ Homepage = "https://github.com/pulkin/sdiff"
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "pytest-benchmark",
     "sphinx",
     "sphinx-rtd-theme",
 ]
