@@ -112,7 +112,7 @@ def wrap_python_pair(a: Sequence[Any], b: Sequence[Any], atol: Optional[float] =
 
     Returns
     -------
-    The comparison protocol for the callable.
+    The comparison protocol for the pair of python objects.
     """
     init_args = {"a": a, "b": b}
     fields = [
@@ -128,6 +128,37 @@ def wrap_python_pair(a: Sequence[Any], b: Sequence[Any], atol: Optional[float] =
         *compose_init(fields),
         *COMPARE_DEF,
         *(COMPARE_ABS if atol is not None else COMPARE_SIMPLE),
+    ]
+    return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
+
+
+def wrap_str(a: str, b: str, **kwargs) -> ComparisonBackend:
+    """
+    Wraps a pair of Unicode strings into a comparison protocol.
+
+    Parameters
+    ----------
+    a
+    b
+        The two strings to compare.
+    kwargs
+        Cython build arguments.
+
+    Returns
+    -------
+    The comparison protocol for the pair of strings.
+    """
+    init_args = {"a": a, "b": b}
+    fields = [
+        ("unicode", "a"),
+        ("unicode", "b"),
+    ]
+    source_code = [
+        *IMPORT,
+        *CLASS_DEF,
+        *compose_init(fields),
+        *COMPARE_DEF,
+        *COMPARE_SIMPLE,
     ]
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
@@ -178,14 +209,7 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
 
         if ta == tb:
             if ta is str:
-                source_code.extend(CLASS_DEF)
-                source_code.extend(compose_init([
-                    ("unicode", "a"),
-                    ("unicode", "b"),
-                ]))
-                source_code.extend(COMPARE_DEF)
-                source_code.extend(COMPARE_SIMPLE)
-                return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
+                return wrap_str(a, b, **kwargs)
             else:
                 try:
                     mem_a = memoryview(a)
