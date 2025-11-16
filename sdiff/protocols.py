@@ -1,4 +1,5 @@
 from typing import Optional, Callable, Any
+from collections.abc import Sequence
 from array import array
 from functools import reduce
 from operator import mul
@@ -49,12 +50,14 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
     return source_code
 
 
-def wrap_callable(fun: Callable[[int, int], Any], resolver: Optional[Callable[[int, int], Any]], **kwargs) -> ComparisonBackend:
+def wrap_python_callable(fun: Callable[[int, int], Any], resolver: Optional[Callable[[int, int], Any]], **kwargs) -> ComparisonBackend:
     """
     Wraps a python callable into a comparison protocol.
 
     The callable has to accept to integers (two positions in a, b sequences) and return
     an object that can be cast to a boolean indicating whether the elements can be aligned or not.
+
+    This protocol is potentially slow as it will call ``fun`` from python runtime.
 
     Parameters
     ----------
@@ -70,16 +73,11 @@ def wrap_callable(fun: Callable[[int, int], Any], resolver: Optional[Callable[[i
     -------
     The comparison protocol for the callable.
     """
-    init_args = {
-        "callable": fun,
-    }
-    fields = [
-        ("object", "callable"),
-    ]
+    init_args = {"callable": fun}
+    fields = [("object", "callable")]
     if resolver is not None:
         init_args["resolver"] = resolver
         fields.append(("object", "resolver"))
-
     source_code = [
         *IMPORT,
         *CLASS_DEF,
@@ -93,6 +91,45 @@ def wrap_callable(fun: Callable[[int, int], Any], resolver: Optional[Callable[[i
             "    return self.resolver(i, j)",
         ])
     return build_inline_module("\n".join(source_code), *kwargs).Backend(**init_args)
+
+
+def wrap_python_pair(a: Sequence[Any], b: Sequence[Any], atol: Optional[float] = None, **kwargs) -> ComparisonBackend:
+    """
+    Wraps a pair of python sequences (or anything indexable) into a comparison protocol.
+
+    This protocol is potentially slow as it will call ``a[i].__eq__(b[j])`` or ``a[i] - b[j]`` from python runtime.
+
+    Parameters
+    ----------
+    a
+    b
+        The two sequences to compare.
+    atol
+        If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
+        instead of the equality comparison ``a[i] == b[j]``.
+    kwargs
+        Cython build arguments.
+
+    Returns
+    -------
+    The comparison protocol for the callable.
+    """
+    init_args = {"a": a, "b": b}
+    fields = [
+        ("object", "a"),
+        ("object", "b"),
+    ]
+    if atol is not None:
+        fields.append(("double", "atol"))
+        init_args["atol"] = atol
+    source_code = [
+        *IMPORT,
+        *CLASS_DEF,
+        *compose_init(fields),
+        *COMPARE_DEF,
+        *(COMPARE_ABS if atol is not None else COMPARE_SIMPLE),
+    ]
+    return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
 def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_weights: Optional[array] = None,
@@ -310,17 +347,7 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
     if not allow_python:
         raise ValueError("failed to pick a type-aware protocol")
     if is_pair:
-        _vars = [
-            ("object", "a"),
-            ("object", "b"),
-        ]
-        if atol is not None:
-            _vars.append(("double", "atol"))
-            init_args["atol"] = atol
-        source_code.extend(CLASS_DEF)
-        source_code.extend(compose_init(_vars))
-        source_code.extend(COMPARE_DEF)
-        source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
-        return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
+        a, b = arg
+        return wrap_python_pair(a=a, b=b, atol=atol, **kwargs)
     else:
-        return wrap_callable(fun=arg, resolver=resolver, **kwargs)
+        return wrap_python_callable(fun=arg, resolver=resolver, **kwargs)
