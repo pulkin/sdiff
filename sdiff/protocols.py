@@ -49,6 +49,52 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
     return source_code
 
 
+def wrap_callable(fun: Callable[[int, int], Any], resolver: Optional[Callable[[int, int], Any]], **kwargs) -> ComparisonBackend:
+    """
+    Wraps a python callable into a comparison protocol.
+
+    The callable has to accept to integers (two positions in a, b sequences) and return
+    an object that can be cast to a boolean indicating whether the elements can be aligned or not.
+
+    Parameters
+    ----------
+    fun
+        The callable comparing a pair of elements from a and b.
+    resolver
+        An optional accompanying callable providing detailed information (any object)
+        on the comparison.
+    kwargs
+        Cython build arguments.
+
+    Returns
+    -------
+    The comparison protocol for the callable.
+    """
+    init_args = {
+        "callable": fun,
+    }
+    fields = [
+        ("object", "callable"),
+    ]
+    if resolver is not None:
+        init_args["resolver"] = resolver
+        fields.append(("object", "resolver"))
+
+    source_code = [
+        *IMPORT,
+        *CLASS_DEF,
+        *compose_init(fields),
+        *COMPARE_DEF,
+        "    return bool(self.callable(i, j))",
+    ]
+    if resolver is not None:
+        source_code.extend([
+            *RESOLVE_DEF,
+            "    return self.resolver(i, j)",
+        ])
+    return build_inline_module("\n".join(source_code), *kwargs).Backend(**init_args)
+
+
 def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_weights: Optional[array] = None,
          struct_threshold: float = 0.749, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
     """
@@ -277,25 +323,4 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
         return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
     else:
-        init_args = {
-            "callable": arg,
-        }
-        _vars = [
-            ("object", "callable"),
-        ]
-        if resolver is not None:
-            init_args["resolver"] = resolver
-            _vars.append(("object", "resolver"))
-
-        source_code.extend([
-            *CLASS_DEF,
-            *compose_init(_vars),
-            *COMPARE_DEF,
-            "    return bool(self.callable(i, j))",
-        ])
-        if resolver is not None:
-            source_code.extend([
-                *RESOLVE_DEF,
-                "    return self.resolver(i, j)",
-            ])
-        return build_inline_module("\n".join(source_code), *kwargs).Backend(**init_args)
+        return wrap_callable(fun=arg, resolver=resolver, **kwargs)
