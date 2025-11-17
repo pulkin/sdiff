@@ -1,3 +1,4 @@
+from math import ceil
 from typing import Optional, Union, NamedTuple
 from collections.abc import Sequence
 from itertools import groupby
@@ -669,16 +670,16 @@ def diff_aligned_2d(
             a_, b_ = a, b
         # compute a mask telling which columns can be compared
         # and which ones have to be ignored
-        mask = np.empty(len(col_diff_sig), dtype=float)
+        mask = np.empty(len(col_diff_sig), dtype=bool)
         offset = 0
         for chunk in col_diff_sig.parts:
             delta = len(chunk)
-            mask[offset:offset + delta] = chunk.eq + 1
+            mask[offset:offset + delta] = chunk.eq
             offset += delta
 
-        _max_cost = mask.sum()
-        min_ratio_row = max(min_ratio_row, (_max_cost - max_cost_row) / _max_cost)
-        mask *= len(mask) / _max_cost
+        _max_cost = 2 * mask.sum() + (~mask).sum()
+        threshold = max(_max_cost - max_cost_row, min_ratio_row * _max_cost)
+        threshold = int(ceil(threshold / 2))
 
         # crunch row differences without using the shallow algorithm
         raw_diff = sequence_diff(
@@ -687,8 +688,8 @@ def diff_aligned_2d(
             eq=wrap(
                 (np.core.records.fromarrays(a_.T), np.core.records.fromarrays(b_.T)),
                 atol=atol,
-                struct_weights=mask,
-                struct_threshold=min_ratio_row,
+                struct_mask=mask,
+                struct_threshold=threshold,
             ),
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,

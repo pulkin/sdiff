@@ -163,10 +163,10 @@ def test_np_record_atol():
     assert comparison_backend(1, 2) is False
 
 
-def test_np_record_weights():
+def test_np_record_mask():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
-    comparison_backend = wrap((a, a), struct_weights=[3, 6, 9], struct_threshold=1.5)
+    comparison_backend = wrap((a, a), struct_mask=[False, True, True], struct_threshold=1)
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is False
     assert comparison_backend(0, 2) is True

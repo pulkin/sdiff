@@ -164,7 +164,7 @@ def wrap_str(a: str, b: str, **kwargs) -> ComparisonBackend:
 
 
 def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
-                    struct_weights: Optional[array] = None, struct_threshold: float = 0.749, **kwargs):
+                    struct_mask: Optional[Sequence[bool]] = None, struct_threshold: Optional[int] = None, **kwargs):
     """
     Wraps a pair of memory views into a comparison protocol.
 
@@ -180,12 +180,11 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
-    struct_weights
-        Optional weights for structure type comparison.
-        These weights are aggregated and compared to ``struct_threshold`` to determine the final result.
-        Weights for inner (nested) structures are not supported.
+    struct_mask
+        An optional mask to include specific struct fields only into the comparison.
+        Masks for inner (nested) structures are not supported.
     struct_threshold
-        The threshold for equal structs.
+        The minimal number of aligned fields in struct.
     kwargs
         Build arguments.
 
@@ -209,7 +208,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
     _counter = 0
     _types = {}
 
-    def _declare(t: Type, array_exact: bool = True, do_weights: bool = False) -> str:
+    def _declare(t: Type, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None) -> str:
         """Declares a struct type and adds a comparison for it"""
         nonlocal _counter
         if isinstance(t, AtomicType):
@@ -232,75 +231,63 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
             source_code.extend(_code)
             _code = []
             _max_dims = 0
+            _i = 0
             _need_temp = False
             for _i, _field in enumerate(t.fields):
-                if _field.shape is None:
-                    _shape = tuple()
-                elif isinstance(_field.shape, int):
-                    _shape = (_field.shape,)
-                else:
-                    _shape = _field.shape
-
-                _n_elements = 1
-                if _shape:
-                    _n_elements = reduce(mul, _shape)
-                if _n_elements > 1:
-                    _code.append(f"  temp = 0")
-                    _need_temp = True
-
-                _indent = ""
-                _index = ""
-                for _j, _s in enumerate(_shape):
-                    _code.append(f"  {_indent}for i{_j} in range({_s}):")
-                    _indent += "  "
-                    _index += f"[i{_j}]"
-                _max_dims = max(_max_dims, len(_shape))
-                if _n_elements == 1:
-                    _accumulator = "result"
-                else:
-                    _accumulator = "temp"
-
-                if isinstance(_field.type, AtomicType):
-                    _eq = f"a.f{_i}{_index} == b.f{_i}{_index}"
-                    if atol is not None and _field.type.typecode != 's':
-                        _eq = f"(a.f{_i}{_index} - b.f{_i}{_index}) >= -atol and (a.f{_i}{_index} - b.f{_i}{_index}) <= atol"
-                    if do_weights and _accumulator == "result":
-                        _eq = f"({_eq}) * weights[{_i}]"
-                    _code.append(f"  {_indent}{_accumulator} += {_eq}")
-                elif isinstance(_field.type, StructType):
-                    _fields = f"a.f{_i}{_index}, b.f{_i}{_index}, threshold"
-                    if atol is not None:
-                        _fields += ", atol"
-                    _code.append(f"  {_indent}{_accumulator} += compare_{_types[_field.type]}({_fields})")
-                else:
-                    raise ValueError(f"unknown type: {_field.type}")
-                if _accumulator == "temp":
-                    if array_exact:
-                        _eq = f"temp == {_n_elements}"
+                if mask is None or mask[_i]:
+                    if _field.shape is None:
+                        _shape = tuple()
+                    elif isinstance(_field.shape, int):
+                        _shape = (_field.shape,)
                     else:
-                        _eq = f"temp / {_n_elements}"
-                    if do_weights:
-                        _eq = f"({_eq}) * weights[{_i}]"
-                    _code.append(f"  result += {_eq}")
-            fields = f"const {name} a, const {name} b, const double threshold"
-            if do_weights:
-                fields += ", const double[:] weights"
+                        _shape = _field.shape
+
+                    _n_elements = 1
+                    if _shape:
+                        _n_elements = reduce(mul, _shape)
+                    if _n_elements > 1:
+                        _code.append(f"  temp = 0")
+                        _need_temp = True
+
+                    _indent = ""
+                    _index = ""
+                    for _j, _s in enumerate(_shape):
+                        _code.append(f"  {_indent}for i{_j} in range({_s}):")
+                        _indent += "  "
+                        _index += f"[i{_j}]"
+                    _max_dims = max(_max_dims, len(_shape))
+                    if _n_elements == 1:
+                        _accumulator = "result"
+                    else:
+                        _accumulator = "temp"
+
+                    if isinstance(_field.type, AtomicType):
+                        _eq = f"a.f{_i}{_index} == b.f{_i}{_index}"
+                        if atol is not None and _field.type.typecode != 's':
+                            _eq = f"(a.f{_i}{_index} - b.f{_i}{_index}) >= -atol and (a.f{_i}{_index} - b.f{_i}{_index}) <= atol"
+                        _code.append(f"  {_indent}{_accumulator} += {_eq}")
+                    elif isinstance(_field.type, StructType):
+                        _fields = f"a.f{_i}{_index}, b.f{_i}{_index}"
+                        if atol is not None:
+                            _fields += ", atol"
+                        _code.append(f"  {_indent}{_accumulator} += compare_{_types[_field.type]}({_fields})")
+                    else:
+                        raise ValueError(f"unknown type: {_field.type}")
+                    if _accumulator == "temp":
+                        _code.append(f"  result += temp == {_n_elements}")
+            fields = f"const {name} a, const {name} b"
             if atol is not None:
                 fields += ", const double atol"
             source_code.extend([
                 f"cdef int compare_{name}({fields}):",
-                f"  cdef double result = 0",
+                f"  cdef int result = 0",
             ])
             if _need_temp:
-                source_code.append("  cdef double temp = 0")
+                source_code.append("  cdef int temp = 0")
             if _max_dims:
                 source_code.append(f"  cdef Py_ssize_t {', '.join(f'i{_j}' for _j in range(_max_dims))}")
             source_code.extend(_code)
-            if len(t.fields) == 1:
-                _postfix = ""
-            else:
-                _postfix = f" / {len(t.fields)}"
-            source_code.append(f"  return result{_postfix} >= threshold")
+            source_code.append(f"  return result >= {threshold or _i + 1}")
             return name
         else:
             raise ValueError(f"unknown type: {t}")
@@ -312,16 +299,11 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
             (f"{dtype_str}[:]", "b"),
         ]
     else:
-        dtype_str = _declare(struct_a, do_weights=True)
+        dtype_str = _declare(struct_a, mask=struct_mask, threshold=struct_threshold)
         fields = [
             (f"const {dtype_str}[:]", "a"),
             (f"const {dtype_str}[:]", "b"),
         ]
-        if isinstance(struct_a, StructType):
-            fields.extend([
-                ("double", "threshold"),
-                ("const double[:]", "weights"),
-            ])
 
     if atol is not None:
         fields.append(("double", "atol"))
@@ -335,21 +317,17 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
     if isinstance(struct_a, AtomicType):
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
     elif isinstance(struct_a, StructType):
-        _args = "self.a[i], self.b[j], self.threshold, self.weights"
+        _args = "self.a[i], self.b[j]"
         if atol is not None:
             _args += ", self.atol"
-        if struct_weights is None:
-            struct_weights = array('d', [1.] * len(struct_a.fields))
-        init_args["threshold"] = struct_threshold
-        init_args["weights"] = array('d', struct_weights)
         source_code.append(f"    return compare_{dtype_str}({_args})")
     else:
         raise ValueError(f"unknown type: {struct_a}")
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
-def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_weights: Optional[array] = None,
-         struct_threshold: float = 0.749, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
+def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_mask: Optional[Sequence[bool]] = None,
+         struct_threshold: Optional[int] = None, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
     """
     Assembles the compare protocol from the provided argument.
 
@@ -365,12 +343,11 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
-    struct_weights
-        Optional weights for structure type comparison.
-        These weights are aggregated and compared to ``struct_threshold`` to determine the final result.
-        Weights for inner (nested) structures are not supported.
+    struct_mask
+        An optional mask to include specific struct fields only into the comparison.
+        Masks for inner (nested) structures are not supported.
     struct_threshold
-        The threshold for equal structs.
+        The minimal number of aligned fields in struct.
     resolver
         An optional callable(i, j) comparing two elements in details.
         This callable will be used to populate the "details" field
@@ -399,10 +376,8 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_we
                 except TypeError:
                     pass  # fallback to python comparison
                 else:
-                    return wrap_memoryview(
-                        a=mem_a, b=mem_b, atol=atol, struct_weights=struct_weights, struct_threshold=struct_threshold,
-                        **kwargs
-                    )
+                    return wrap_memoryview(a=mem_a, b=mem_b, atol=atol, struct_mask=struct_mask,
+                                           struct_threshold=struct_threshold, **kwargs)
         if not allow_python:
             raise ValueError(f"failed to pick a type-aware protocol (failed to convert to memoryview or data type mismatch)")
         return wrap_python_pair(a=a, b=b, atol=atol, **kwargs)
