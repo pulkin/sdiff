@@ -6,7 +6,7 @@ from operator import mul
 
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .cython.struct3118 import parse_3118, Type, AtomicType, StructType
+from .cython.struct3118 import parse_3118, Type, AtomicType, StructType, StructField
 
 IMPORT = (
     "import cython",
@@ -211,6 +211,20 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     _counter = 0
     _types = {}
 
+    def _compare_expr(_left: str, _right: str, _type: Type) -> str:
+        if isinstance(_type, AtomicType):
+            if atol is not None and _type.typecode != 's':
+                return  f"({_left} - {_right}) >= -atol and ({_left} - {_right}) <= atol"
+            else:
+                return f"{_left} == {_right}"
+        elif isinstance(_type, StructType):
+            _fields = [_left, _right]
+            if atol is not None:
+                _fields.append("atol")
+            return f"compare_{_types[_type]}({', '.join(_fields)})"
+        else:
+            raise ValueError(f"unknown type: {_type}")
+
     def _declare(t: Type, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None) -> str:
         """Declares a struct type and adds a comparison for it"""
         nonlocal _counter
@@ -259,23 +273,8 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
                         _indent += "  "
                         _index += f"[i{_j}]"
                     _max_dims = max(_max_dims, len(_shape))
-                    if _n_elements == 1:
-                        _accumulator = "result"
-                    else:
-                        _accumulator = "temp"
-
-                    if isinstance(_field.type, AtomicType):
-                        _eq = f"a.f{_i}{_index} == b.f{_i}{_index}"
-                        if atol is not None and _field.type.typecode != 's':
-                            _eq = f"(a.f{_i}{_index} - b.f{_i}{_index}) >= -atol and (a.f{_i}{_index} - b.f{_i}{_index}) <= atol"
-                        _code.append(f"  {_indent}{_accumulator} += {_eq}")
-                    elif isinstance(_field.type, StructType):
-                        _fields = f"a.f{_i}{_index}, b.f{_i}{_index}"
-                        if atol is not None:
-                            _fields += ", atol"
-                        _code.append(f"  {_indent}{_accumulator} += compare_{_types[_field.type]}({_fields})")
-                    else:
-                        raise ValueError(f"unknown type: {_field.type}")
+                    _accumulator = "result" if _n_elements == 1 else "temp"
+                    _code.append(f"  {_indent}{_accumulator} += {_compare_expr(f'a.f{_i}{_index}', f'b.f{_i}{_index}', _field.type)}")
                     if _accumulator == "temp":
                         _code.append(f"  result += temp == {_n_elements}")
             fields = f"const {name} a, const {name} b"
