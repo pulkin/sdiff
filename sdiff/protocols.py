@@ -246,14 +246,12 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         else:
             raise ValueError(f"unknown type: {_type}")
 
-    def _declare_struct(t: StructType, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None):
+    def _declare_struct(t: StructType, mask: Optional[Sequence[bool]] = None, threshold: bool = False):
         """Declares a struct type and adds a comparison for it"""
         name = _type_c_name(t)
-        if t in _structs_declared:
-            return
         _structs_declared.add(t)
         for _field in t.fields:
-            if isinstance(_field.type, StructType):
+            if isinstance(_field.type, StructType) and _field.type not in _structs_declared:
                 _declare_struct(_field.type)
         source_code.extend(_struct_def(t, name))
         _code = []
@@ -286,6 +284,8 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
                 if _n_elements != 1:
                     _code.append(f"  result += temp == {_n_elements}")
         fields = f"const {name} a, const {name} b"
+        if threshold:
+            fields += ", const long threshold"
         if atol is not None:
             fields += ", const double atol"
         source_code.extend([
@@ -295,7 +295,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         if _need_temp:
             source_code.append("  cdef int temp = 0")
         source_code.extend(_code)
-        source_code.append(f"  return result >= {threshold or _i + 1}")
+        source_code.append(f"  return result >= {'threshold' if threshold else _i + 1}")
 
     if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
         dtype_str = "object"
@@ -304,13 +304,15 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             (f"{dtype_str}[:]", "b"),
         ]
     else:
-        if isinstance(struct_a, StructType):
-            _declare_struct(struct_a, mask=struct_mask, threshold=struct_threshold)
         dtype_str = _type_c_name(struct_a)
         fields = [
             (f"const {dtype_str}[:]", "a"),
             (f"const {dtype_str}[:]", "b"),
         ]
+        if isinstance(struct_a, StructType):
+            _declare_struct(struct_a, mask=struct_mask, threshold=True)
+            fields.append((f"long", "threshold"))
+            init_args["threshold"] = struct_threshold if struct_threshold is not None else len(struct_a.fields)
 
     if atol is not None:
         fields.append(("double", "atol"))
@@ -324,7 +326,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     if isinstance(struct_a, AtomicType):
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
     elif isinstance(struct_a, StructType):
-        _args = "self.a[i], self.b[j]"
+        _args = "self.a[i], self.b[j], self.threshold"
         if atol is not None:
             _args += ", self.atol"
         source_code.append(f"    return compare_{dtype_str}({_args})")
