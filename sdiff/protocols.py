@@ -1,12 +1,11 @@
 from typing import Optional, Callable, Any
 from collections.abc import Sequence
-from array import array
 from functools import reduce
 from operator import mul
 
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .cython.struct3118 import parse_3118, Type, AtomicType, StructType, StructField
+from .cython.struct3118 import parse_3118, Type, AtomicType, StructType
 
 IMPORT = (
     "import cython",
@@ -211,6 +210,18 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     _counter = 0
     _types = {}
 
+    def _struct_def(_t: StructType, _name: str) -> list[str]:
+        _code = [f"cdef packed struct {_name}:"]
+        for _i, _field in enumerate(_t.fields):
+            if _field.shape is None:
+                _postfix = ""
+            elif isinstance(_field.shape, int):
+                _postfix = f"[{_field.shape}]"
+            else:
+                _postfix = f"[{','.join(map(str, _field.shape))}]"
+            _code.append(f"  {_declare(_field.type)} f{_i}{_postfix}")
+        return _code
+
     def _compare_expr(_left: str, _right: str, _type: Type) -> str:
         if isinstance(_type, AtomicType):
             if atol is not None and _type.typecode != 's':
@@ -236,16 +247,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             name = f"struct_{_counter}"
             _types[t] = name
             _counter += 1
-            _code = [f"cdef packed struct {name}:"]
-            for _i, _field in enumerate(t.fields):
-                if _field.shape is None:
-                    _postfix = ""
-                elif isinstance(_field.shape, int):
-                    _postfix = f"[{_field.shape}]"
-                else:
-                    _postfix = f"[{','.join(map(str, _field.shape))}]"
-                _code.append(f"  {_declare(_field.type)} f{_i}{_postfix}")
-            source_code.extend(_code)
+            source_code.extend(_struct_def(t, name))
             _code = []
             _max_dims = 0
             _i = 0
