@@ -207,9 +207,19 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
 
     source_code = list(IMPORT)
     init_args = {"a": a, "b": b}
-    _types = {}
+    _structs_declared = set()
+
+    def _type_c_name(_t: Type) -> str:
+        """Picks a name for the provided type"""
+        if isinstance(_t, AtomicType):
+            return _t.c
+        elif isinstance(_t, StructType):
+            return f"struct_{_t.get_fingerprint()[:16]}"
+        else:
+            raise NotImplementedError(f"unknown type: {_t}")
 
     def _struct_def(_t: StructType, _name: str) -> list[str]:
+        """Prepares a cdef section for the provided struct type"""
         _code = [f"cdef packed struct {_name}:"]
         for _i, _field in enumerate(_t.fields):
             if _field.shape is None:
@@ -218,10 +228,11 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
                 _postfix = f"[{_field.shape}]"
             else:
                 _postfix = f"[{','.join(map(str, _field.shape))}]"
-            _code.append(f"  {_declare(_field.type)} f{_i}{_postfix}")
+            _code.append(f"  {_type_c_name(_field.type)} f{_i}{_postfix}")
         return _code
 
     def _compare_expr(_left: str, _right: str, _type: Type) -> str:
+        """Prepares a comparison expression for the provided type"""
         if isinstance(_type, AtomicType):
             if atol is not None and _type.typecode != 's':
                 return  f"({_left} - {_right}) >= -atol and ({_left} - {_right}) <= atol"
@@ -231,67 +242,60 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             _fields = [_left, _right]
             if atol is not None:
                 _fields.append("atol")
-            return f"compare_{_types[_type]}({', '.join(_fields)})"
+            return f"compare_{_type_c_name(_type)}({', '.join(_fields)})"
         else:
             raise ValueError(f"unknown type: {_type}")
 
-    def _declare(t: Type, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None) -> str:
+    def _declare_struct(t: StructType, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None):
         """Declares a struct type and adds a comparison for it"""
-        if isinstance(t, AtomicType):
-            return t.c
-        elif t in _types:
-            return _types[t]
-        elif isinstance(t, StructType):
-            name = f"struct_{t.get_fingerprint()}"
-            _types[t] = name
-            source_code.extend(_struct_def(t, name))
-            _code = []
-            _max_dims = 0
-            _i = 0
-            _need_temp = False
-            for _i, _field in enumerate(t.fields):
-                if mask is None or mask[_i]:
-                    if _field.shape is None:
-                        _shape = tuple()
-                    elif isinstance(_field.shape, int):
-                        _shape = (_field.shape,)
-                    else:
-                        _shape = _field.shape
+        name = _type_c_name(t)
+        if t in _structs_declared:
+            return
+        _structs_declared.add(t)
+        for _field in t.fields:
+            if isinstance(_field.type, StructType):
+                _declare_struct(_field.type)
+        source_code.extend(_struct_def(t, name))
+        _code = []
+        _i = 0
+        _need_temp = False
+        for _i, _field in enumerate(t.fields):
+            if mask is None or mask[_i]:
+                if _field.shape is None:
+                    _shape = tuple()
+                elif isinstance(_field.shape, int):
+                    _shape = (_field.shape,)
+                else:
+                    _shape = _field.shape
 
-                    _n_elements = 1
-                    if _shape:
-                        _n_elements = reduce(mul, _shape)
-                    if _n_elements > 1:
-                        _code.append(f"  temp = 0")
-                        _need_temp = True
+                _n_elements = 1
+                if _shape:
+                    _n_elements = reduce(mul, _shape)
+                if _n_elements > 1:
+                    _code.append(f"  temp = 0")
+                    _need_temp = True
 
-                    _indent = ""
-                    _index = ""
-                    for _j, _s in enumerate(_shape):
-                        _code.append(f"  {_indent}for i{_j} in range({_s}):")
-                        _indent += "  "
-                        _index += f"[i{_j}]"
-                    _max_dims = max(_max_dims, len(_shape))
-                    _accumulator = "result" if _n_elements == 1 else "temp"
-                    _code.append(f"  {_indent}{_accumulator} += {_compare_expr(f'a.f{_i}{_index}', f'b.f{_i}{_index}', _field.type)}")
-                    if _accumulator == "temp":
-                        _code.append(f"  result += temp == {_n_elements}")
-            fields = f"const {name} a, const {name} b"
-            if atol is not None:
-                fields += ", const double atol"
-            source_code.extend([
-                f"cdef int compare_{name}({fields}):",
-                f"  cdef int result = 0",
-            ])
-            if _need_temp:
-                source_code.append("  cdef int temp = 0")
-            if _max_dims:
-                source_code.append(f"  cdef Py_ssize_t {', '.join(f'i{_j}' for _j in range(_max_dims))}")
-            source_code.extend(_code)
-            source_code.append(f"  return result >= {threshold or _i + 1}")
-            return name
-        else:
-            raise ValueError(f"unknown type: {t}")
+                _indent = ""
+                _index = ""
+                for _j, _s in enumerate(_shape):
+                    _code.append(f"  {_indent}for i{_j} in range({_s}):")
+                    _indent += "  "
+                    _index += f"[i{_j}]"
+                _accumulator = "result" if _n_elements == 1 else "temp"
+                _code.append(f"  {_indent}{_accumulator} += {_compare_expr(f'a.f{_i}{_index}', f'b.f{_i}{_index}', _field.type)}")
+                if _n_elements != 1:
+                    _code.append(f"  result += temp == {_n_elements}")
+        fields = f"const {name} a, const {name} b"
+        if atol is not None:
+            fields += ", const double atol"
+        source_code.extend([
+            f"cdef int compare_{name}({fields}):",
+            f"  cdef int result = 0",
+        ])
+        if _need_temp:
+            source_code.append("  cdef int temp = 0")
+        source_code.extend(_code)
+        source_code.append(f"  return result >= {threshold or _i + 1}")
 
     if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
         dtype_str = "object"
@@ -300,7 +304,9 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             (f"{dtype_str}[:]", "b"),
         ]
     else:
-        dtype_str = _declare(struct_a, mask=struct_mask, threshold=struct_threshold)
+        if isinstance(struct_a, StructType):
+            _declare_struct(struct_a, mask=struct_mask, threshold=struct_threshold)
+        dtype_str = _type_c_name(struct_a)
         fields = [
             (f"const {dtype_str}[:]", "a"),
             (f"const {dtype_str}[:]", "b"),

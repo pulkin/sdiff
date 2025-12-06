@@ -146,7 +146,7 @@ def test_np_record():
     assert comparison_backend(0, 2) is False
     assert comparison_backend(1, 2) is False
 
-    comparison_backend = wrap((a, a), struct_threshold=0.1)
+    comparison_backend = wrap((a, a), struct_threshold=1)
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is True
     assert comparison_backend(0, 2) is True
@@ -198,7 +198,7 @@ def test_np_record_nested_1():
     comparison_backend = wrap((
         np.array([(0, cat, cat), (1, cat, bat), (2, bat, cat)], dtype=dtype),
         np.array([(2, bat, cat_), (0, cat_, bat)], dtype=dtype),
-    ), struct_threshold=0.5)
+    ), struct_threshold=1)
     assert comparison_backend(0, 0) is False
     assert comparison_backend(0, 1) is True
     assert comparison_backend(2, 0) is True
