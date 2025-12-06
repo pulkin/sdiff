@@ -554,10 +554,146 @@ def test_align_inflate_arrays():
 
     data_a_aligned, data_b_aligned = align_inflate_arrays(data_a, data_b, d)
 
-    # shape unchanged
-    assert data_a.shape == data_a_aligned.shape
-    assert data_b.shape == data_b_aligned.shape
+    assert (data_a_aligned == np.rec.fromarrays(
+        [_a, np.zeros(_a.shape, dtype=s32), _a, _a, _as, _a],
+        dtype=np.dtype([("a1", i8), ("y1", s32), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)]),
+    )).all()
+    assert (data_b_aligned == np.rec.fromarrays(
+        [_b, _bs, _b, _b, np.zeros(_b.shape, dtype=s32), _b],
+        dtype=np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("x1", s32), ("b4", i8)]),
+    )).all()
 
-    # correct dtype
-    assert data_a_aligned.dtype == np.dtype([("a1", i8), ("y1", s32), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
-    assert data_b_aligned.dtype == np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("x1", s32), ("b4", i8)])
+
+def test_diff_record_zeros(monkeypatch):
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
+    d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
+
+    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
+
+    a = np.zeros(10, dtype=d1)
+    b = np.zeros(10, dtype=d2)
+
+    a_aligned = np.zeros(10, dtype=d_common)
+    b_aligned = np.zeros(10, dtype=d_common)
+
+    assert diff(a, b) == Diff(
+        ratio=1,
+        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=True)],
+    )
+
+
+def test_diff_record_0(monkeypatch):
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
+    d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
+
+    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
+
+    a = np.rec.fromarrays([
+        np.full(shape=10, fill_value=1, dtype=i8),
+        np.full(shape=10, fill_value=2, dtype=i8),
+        np.full(shape=10, fill_value=3, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=4, dtype=i8),
+    ], dtype=d1)
+    b = np.rec.fromarrays([
+        np.full(shape=10, fill_value=5, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=6, dtype=i8),
+        np.full(shape=10, fill_value=7, dtype=i8),
+        np.full(shape=10, fill_value=8, dtype=i8),
+    ], dtype=d2)
+
+    a_aligned = np.rec.fromarrays([
+        np.full(shape=10, fill_value=1, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=2, dtype=i8),
+        np.full(shape=10, fill_value=3, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=4, dtype=i8),
+    ], dtype=d_common)
+    b_aligned = np.rec.fromarrays([
+        np.full(shape=10, fill_value=5, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=6, dtype=i8),
+        np.full(shape=10, fill_value=7, dtype=i8),
+        np.zeros(shape=10, dtype=s32),
+        np.full(shape=10, fill_value=8, dtype=i8),
+    ], dtype=d_common)
+
+    assert diff(a, b, min_ratio=0.01) == Diff(
+        ratio=0,
+        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=False)],
+    )
+
+
+def test_diff_record_1(monkeypatch):
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+
+    d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
+    d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
+
+    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
+    d_uncommon = np.dtype([("field0", i8), ("field1", i8), ("field2", i8), ("field3", s32), ("field4", i8),
+                           ("field5", i8), ("field6", s32), ("field7", i8), ("field8", i8), ("field9", i8)])
+
+    a = np.zeros(shape=10, dtype=d1)
+    b = np.zeros(shape=10, dtype=d2)
+
+    assert diff(a, b, record_min_ratio=0.81) == Diff(
+        ratio=0,
+        diffs=[Chunk(data_a=np.zeros(shape=10, dtype=d_uncommon), data_b=np.zeros(shape=10, dtype=d_uncommon), eq=False)],
+    )
+    assert diff(a, b, record_min_ratio=0.79) == Diff(
+        ratio=1,
+        diffs=[Chunk(data_a=np.zeros(shape=10, dtype=d_common), data_b=np.zeros(shape=10, dtype=d_common), eq=True)],
+    )
+
+
+def test_diff_record_2(monkeypatch):
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+
+    i8 = np.dtype("i8")
+    s32 = np.dtype("S32")
+    f8 = np.dtype("f8")
+
+    d1 = np.dtype([("ix", i8), ("name", s32), ("val", f8)])
+    d2 = np.dtype([("ix", i8), ("name", s32), ("val_2", f8)])
+
+    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", f8)])
+
+    a = np.rec.fromarrays([
+        np.array([0, 1, 2, 3, 4, 5], dtype=i8),
+        np.array([b"alpha", b"beta", b"gamma", b"delta", b"epsilon", b"zeta"], dtype=s32),
+        np.array([10.2, 34.7, 12, 1, 7.7, 12.0], dtype=f8)
+    ], dtype=d1)
+    b = np.rec.fromarrays([
+        np.array([0, 1, 2, 3, 4, 5], dtype=i8),
+        np.array([b"alpha", b"beta", b"gamma", b"delta", b"epsilon", b"zeta"], dtype=s32),
+        np.array([10.8, 34.6, 10, 1.1, 7.7, 11.9], dtype=f8)
+    ], dtype=d2)
+
+    a_aligned = a.astype(d_common)
+    b_aligned = b.astype(d_common)
+
+    assert diff(a, b, min_ratio=0.6, atol=0.2, record_compare_names=False, record_compare_data=True) == Diff(
+        ratio=2./3,
+        diffs=[
+            Chunk(data_a=a_aligned[:1], data_b=b_aligned[:1], eq=False),
+            Chunk(data_a=a_aligned[1:2], data_b=b_aligned[1:2], eq=True),
+            Chunk(data_a=a_aligned[2:3], data_b=b_aligned[2:3], eq=False),
+            Chunk(data_a=a_aligned[3:], data_b=b_aligned[3:], eq=True),
+        ],
+    )

@@ -163,8 +163,8 @@ def wrap_str(a: str, b: str, **kwargs) -> ComparisonBackend:
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
-def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
-                    struct_mask: Optional[Sequence[bool]] = None, struct_threshold: Optional[int] = None, **kwargs):
+def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, struct_threshold: Optional[int] = None,
+                    struct_mask: Optional[Sequence[bool]] = None, **kwargs):
     """
     Wraps a pair of memory views into a comparison protocol.
 
@@ -180,11 +180,14 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
-    struct_mask
-        An optional mask to include specific struct fields only into the comparison.
-        Masks for inner (nested) structures are not supported.
     struct_threshold
-        The minimal number of aligned fields in struct.
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        the minimal number of fields to be equal for the whole struct to be
+        considered equal.
+    struct_mask
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        a mask including/removing individual fields into/from comparison.
+        Masks for inner (nested) struct data types are not supported.
     kwargs
         Build arguments.
 
@@ -326,8 +329,8 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None,
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
-def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_mask: Optional[Sequence[bool]] = None,
-         struct_threshold: Optional[int] = None, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
+def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_threshold: Optional[int] = None,
+         struct_mask: Optional[Sequence[bool]] = None, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
     """
     Assembles the compare protocol from the provided argument.
 
@@ -343,11 +346,14 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_ma
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
-    struct_mask
-        An optional mask to include specific struct fields only into the comparison.
-        Masks for inner (nested) structures are not supported.
     struct_threshold
-        The minimal number of aligned fields in struct.
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        the minimal number of fields to be equal for the whole struct to be
+        considered equal.
+    struct_mask
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        a mask including/removing individual fields into/from comparison.
+        Masks for inner (nested) struct data types are not supported.
     resolver
         An optional callable(i, j) comparing two elements in details.
         This callable will be used to populate the "details" field

@@ -32,6 +32,18 @@ class ChunkSignature:
         else:
             return self.size_a + self.size_b
 
+    @property
+    def cost(self) -> int:
+        return self.eq * self.max_cost
+
+    @property
+    def max_cost(self) -> int:
+        return self.size_a + self.size_b
+
+    @property
+    def mask(self) -> tuple[bool, ...]:
+        return (self.eq,) * (self.size_a if self.eq else (self.size_a + self.size_b))
+
     @classmethod
     def aligned(cls, n: int) -> "ChunkSignature":
         return cls(size_a=n, size_b=n, eq=True)
@@ -57,11 +69,19 @@ class Signature:
         return sum(len(i) for i in self.parts)
 
     @property
-    def ratio(self):
-        return (
-            sum(((i.size_a + i.size_b) * i.eq) for i in self.parts) /
-            sum((i.size_a + i.size_b) for i in self.parts)
-        )
+    def cost(self) -> int:
+        return sum(i.cost for i in self.parts)
+    @property
+    def max_cost(self) -> int:
+        return sum(i.max_cost for i in self.parts)
+
+    @property
+    def ratio(self) -> float:
+        return self.cost / self.max_cost
+
+    @property
+    def mask(self) -> tuple[bool, ...]:
+        return reduce(add, [i.mask for i in self.parts])
 
     @classmethod
     def aligned(cls, n: int) -> "Signature":

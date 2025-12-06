@@ -30,6 +30,8 @@ def diff(
         b: Sequence[object],
         eq=None,
         atol: Optional[float] = None,
+        struct_threshold: Optional[int] = None,
+        struct_mask: Optional[Sequence[bool]] = None,
         min_ratio: float = MIN_RATIO,
         max_cost: int = MAX_COST,
         max_calls: int = MAX_CALLS,
@@ -59,6 +61,14 @@ def diff(
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
+    struct_threshold
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        the minimal number of fields to be equal for the whole struct to be
+        considered equal.
+    struct_mask
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        a mask including/removing individual fields into/from comparison.
+        Masks for inner (nested) struct data types are not supported.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -125,6 +135,8 @@ def diff(
         allow_python=not no_python,
         atol=atol,
         resolver=dig,
+        struct_threshold=struct_threshold,
+        struct_mask=struct_mask,
     )
 
     total_len = n + m
@@ -255,6 +267,8 @@ def diff_nested(
         b,
         eq=None,
         atol: Optional[float] = None,
+        struct_threshold: Optional[int] = None,
+        struct_mask: Optional[Sequence[bool]] = None,
         min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
         max_cost: Union[int, tuple[int, ...]] = MAX_COST,
         max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
@@ -282,6 +296,14 @@ def diff_nested(
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
+    struct_threshold
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        the minimal number of fields to be equal for the whole struct to be
+        considered equal.
+    struct_mask
+        For arrays of struct data types (e.g. numpy record arrays) specifies
+        a mask including/removing individual fields into/from comparison.
+        Masks for inner (nested) struct data types are not supported.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -340,6 +362,8 @@ def diff_nested(
             b,
             eq=eq,
             atol=atol,
+            struct_threshold=struct_threshold,
+            struct_mask=struct_mask,
             min_ratio=min_ratio_here,
             max_cost=max_cost_here,
             max_calls=max_calls_here,
@@ -362,6 +386,8 @@ def diff_nested(
                     b=b[j],
                     eq=(a_[i], b_[j]),
                     atol=atol,
+                    struct_threshold=struct_threshold,
+                    struct_mask=struct_mask,
                     min_ratio=min_ratio_pass,
                     max_cost=max_cost_pass,
                     max_calls=max_calls_pass,
@@ -380,6 +406,8 @@ def diff_nested(
                         b=b[j],
                         eq=(a_[i], b_[j]),
                         atol=atol,
+                        struct_threshold=struct_threshold,
+                        struct_mask=struct_mask,
                         min_ratio=min_ratio_pass,
                         max_cost=max_cost_pass,
                         max_calls=max_calls_pass,
@@ -409,6 +437,8 @@ def diff_nested(
         b=b,
         eq=_eq,
         atol=atol,
+        struct_threshold=struct_threshold,
+        struct_mask=struct_mask,
         min_ratio=min_ratio_here,
         max_cost=max_cost_here,
         max_calls=max_calls_here,

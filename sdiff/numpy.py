@@ -16,7 +16,6 @@ from .protocols import wrap
 def diff(
         a,
         b,
-        eq=None,
         atol: Optional[float] = None,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
@@ -24,9 +23,17 @@ def diff(
         eq_only: bool = False,
         kernel: Optional[str] = None,
         rtn_diff: bool = True,
+        record_compare_names: bool = False,
+        record_compare_data: bool = False,
+        record_min_ratio: float = MIN_RATIO,
+        record_max_cost: int = MAX_COST,
 ) -> Diff:
     """
     Computes a diff between numpy tensors of equal rank.
+
+    For record (struct) arrays, will attempt to align their field dtypes before doing
+    the data comparison. A number of options control how exactly record fields
+    are aligned.
 
     Parameters
     ----------
@@ -34,10 +41,6 @@ def diff(
         The first tensor.
     b
         The second tensor.
-    eq
-        An optional pair of tensors ``(a_, b_)`` substituting the input
-        tensors when computing the diff. The returned chunks, however, are
-        still composed of elements from a and b.
     atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]``.
@@ -67,6 +70,15 @@ def diff(
         If True, computes and returns the diff. Otherwise, returns the
         similarity ratio only. Computing the similarity ratio only is
         typically faster and consumes less memory.
+    record_compare_names
+        If True, will include record field names into field comparison.
+    record_compare_data
+        If True, will include field data into field comparison. This may
+        require much more computation to produce the field alignment.
+    record_min_ratio
+        min_ratio for record fields comparison.
+    record_max_cost
+        max_cost for record fields comparison.
 
     Returns
     -------
@@ -78,12 +90,36 @@ def diff(
         raise ValueError(f"{a.ndim=} != {b.ndim=}")
 
     ndim = a.ndim
+    struct_threshold = None
+    struct_mask = None
+
+    if a.dtype.names is not None or b.dtype.names is not None:
+        # compare as record arrays
+        dtype_d = dtype_diff(
+            a=a,
+            b=b,
+            names=record_compare_names,
+            min_ratio=record_min_ratio,
+            max_cost=record_max_cost,
+            kernel=kernel,
+            data=record_compare_data,
+            data_atol=atol,
+            data_min_ratio=min_ratio,
+            data_max_cost=max_cost,
+        )
+        a, b = align_inflate_arrays(a, b, dtype_d, common_dtype=True)
+        struct_mask = dtype_d.signature.mask
+        struct_threshold = max(
+            int(ceil(dtype_d.signature.max_cost * record_min_ratio / 2)),
+            int(ceil((dtype_d.signature.max_cost - record_max_cost) / 2)),
+        )
 
     return diff_nested(
         a=a,
         b=b,
-        eq=eq,
         atol=atol,
+        struct_threshold=struct_threshold,
+        struct_mask=struct_mask,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -247,7 +283,11 @@ def dtype_diff(
     )
 
 
-def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tuple[np.ndarray, np.ndarray]:
+def _anonymize_fields(fields: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    return [(f"field{i}", t) for i, (_, t) in enumerate(fields)]
+
+
+def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff, common_dtype: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """
     Aligns arrays towards a common (record) dtype.
     Given two record arrays and the dtype diff, produces the corresponding pair of arrays with the same record
@@ -260,6 +300,8 @@ def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tupl
         The arrays to align.
     field_diff
         A diff telling how to align fields.
+    common_dtype
+        If True, uses a common dtype with anonymized field names for both arrays.
 
     Returns
     -------
@@ -268,7 +310,11 @@ def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tupl
     a = _to_record(a)
     b = _to_record(b)
 
-    dtype_a, dtype_b = map(np.dtype, map(list, field_diff.get_inflated_ab()))
+    dtype_a, dtype_b = map(list, field_diff.get_inflated_ab())
+    if common_dtype:
+        dtype_a = dtype_b = np.dtype(_anonymize_fields(dtype_a))
+    else:
+        dtype_a, dtype_b = map(np.dtype, (dtype_a, dtype_b))
     init_a, init_b = field_diff.with_data(
         data_a=[a[field] for field in a.dtype.fields],
         data_b=[b[field] for field in b.dtype.fields],
