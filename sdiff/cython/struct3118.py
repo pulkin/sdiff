@@ -3,6 +3,7 @@ A very naive implementation of parsing type formats from PEP-3118.
 """
 from dataclasses import dataclass
 from typing import Union, Optional
+from hashlib import sha1
 
 import pyparsing as pp
 
@@ -33,6 +34,9 @@ class Type:
     def format(self) -> str:
         raise NotImplementedError
 
+    def get_fingerprint(self) -> str:
+        return sha1(self.format().encode("utf-8")).hexdigest()
+
 
 @dataclass(frozen=True)
 class AtomicType(Type):
@@ -41,7 +45,7 @@ class AtomicType(Type):
     z: bool = False
 
     def format(self) -> str:
-        return f"{self.byte_order if self.byte_order != '@' else ''}{self.typecode}"
+        return f"{self.byte_order if self.byte_order != '@' else ''}{'Z' if self.z else ''}{self.typecode}"
 
     @property
     def c(self) -> str:
@@ -62,8 +66,8 @@ class StructField:
         shape = self.shape
         if shape is None:
             shape = ""
-        elif len(shape) == 1:
-            shape = str(shape[0])
+        elif isinstance(shape, int):
+            shape = str(shape)
         else:
             shape = "(" + ','.join(map(str, self.shape)) + ")"
         return f"{shape}{self.type.format()}{':' + self.caption + ':' if self.caption is not None else ''}"

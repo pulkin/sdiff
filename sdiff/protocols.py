@@ -207,7 +207,6 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
 
     source_code = list(IMPORT)
     init_args = {"a": a, "b": b}
-    _counter = 0
     _types = {}
 
     def _struct_def(_t: StructType, _name: str) -> list[str]:
@@ -238,15 +237,13 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
 
     def _declare(t: Type, mask: Optional[Sequence[bool]] = None, threshold: Optional[int] = None) -> str:
         """Declares a struct type and adds a comparison for it"""
-        nonlocal _counter
         if isinstance(t, AtomicType):
             return t.c
         elif t in _types:
             return _types[t]
         elif isinstance(t, StructType):
-            name = f"struct_{_counter}"
+            name = f"struct_{t.get_fingerprint()}"
             _types[t] = name
-            _counter += 1
             source_code.extend(_struct_def(t, name))
             _code = []
             _max_dims = 0
