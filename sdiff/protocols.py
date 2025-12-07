@@ -286,33 +286,31 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
                 ])
         return _code
 
-    def _declare_struct(t: StructType, mask: Optional[Sequence[bool]] = None, threshold: bool = False):
+    def _get_struct_code(_t: StructType, _mask: Optional[Sequence[bool]] = None, _threshold: bool = False) -> list[str]:
         """Declares a struct type and adds a comparison for it"""
-        name = _get_type_c_name(t)
-        _structs_declared.add(t)
-        for _field in t.fields:
-            if isinstance(_field.type, StructType) and _field.type not in _structs_declared:
-                _declare_struct(_field.type)
-        source_code.extend(_get_struct_cdef(t, name))
+        _name = _get_type_c_name(_t)
+        _structs_declared.add(_t)
         _code = []
-        _i = 0
-        _need_temp = False
-        for _i, _field in enumerate(t.fields):
-            if mask is None or mask[_i]:
-                _code.extend(_get_struct_field_comparison(_field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", _indent="  "))
-        fields = f"const {name} a, const {name} b"
-        if threshold:
-            fields += ", const long threshold"
+        for _field in _t.fields:
+            if isinstance(_field.type, StructType) and _field.type not in _structs_declared:
+                _code.extend(_get_struct_code(_field.type))
+        _code.extend(_get_struct_cdef(_t, _name))
+
+        _args = f"const {_name} a, const {_name} b"
+        if _threshold:
+            _args += ", const long threshold"
         if atol is not None:
-            fields += ", const double atol"
-        source_code.extend([
-            f"cdef int compare_{name}({fields}):",
+            _args += ", const double atol"
+
+        _code.extend([
+            f"cdef int compare_{_name}({_args}):",
             f"  cdef int result = 0",
         ])
-        if _need_temp:
-            source_code.append("  cdef int temp = 0")
-        source_code.extend(_code)
-        source_code.append(f"  return result >= {'threshold' if threshold else _i + 1}")
+        for _i, _field in enumerate(_t.fields):
+            if _mask is None or _mask[_i]:
+                _code.extend(_get_struct_field_comparison(_field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", _indent="  "))
+        _code.append(f"  return result >= {'threshold' if _threshold else _i + 1}")
+        return _code
 
     if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
         dtype_str = "object"
@@ -327,7 +325,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             (f"const {dtype_str}[:]", "b"),
         ]
         if isinstance(struct_a, StructType):
-            _declare_struct(struct_a, mask=struct_mask, threshold=True)
+            source_code.extend(_get_struct_code(struct_a, _mask=struct_mask, _threshold=True))
             fields.append((f"long", "threshold"))
             init_args["threshold"] = struct_threshold if struct_threshold is not None else len(struct_a.fields)
 
