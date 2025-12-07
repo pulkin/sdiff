@@ -162,6 +162,117 @@ def wrap_str(a: str, b: str, **kwargs) -> ComparisonBackend:
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
+class _MVCodeGen:
+    """A class for cython code generation for memoryviews"""
+    def __init__(self, atol: Optional[float] = None):
+        self.atol = atol
+
+    def get_type_c_name(self, t: Type) -> str:
+        """Picks a name for the provided type"""
+        if isinstance(t, AtomicType):
+            return t.c
+        elif isinstance(t, StructType):
+            return f"struct_{t.get_fingerprint()[:16]}"
+        else:
+            raise NotImplementedError(f"unknown type: {t}")
+
+    def get_struct_cdef(self, t: StructType, name: str) -> list[str]:
+        """Prepares a cdef section for the provided struct type"""
+        code = [f"cdef packed struct {name}:"]
+        for i, field in enumerate(t.fields):
+            if field.shape is None:
+                postfix = ""
+            elif isinstance(field.shape, int):
+                postfix = f"[{field.shape}]"
+            else:
+                postfix = f"[{']['.join(map(str, field.shape))}]"
+            code.append(f"  const {self.get_type_c_name(field.type)} f{i}{postfix}")
+        return code
+
+    def get_type_compare_expr(self, left: str, right: str, t: Type) -> str:
+        """Prepares a comparison expression for the provided type"""
+        if isinstance(t, AtomicType):
+            if self.atol is not None and t.typecode != 's':
+                return  f"({left} - {right}) >= -atol and ({left} - {right}) <= atol"
+            else:
+                return f"{left} == {right}"
+        elif isinstance(t, StructType):
+            fields = [left, right]
+            if self.atol is not None:
+                fields.append("atol")
+            return f"compare_{self.get_type_c_name(t)}({', '.join(fields)})"
+        else:
+            raise ValueError(f"unknown type: {t}")
+
+    def get_struct_field_comparison(self, field: StructField, left: str, right: str, result_statement: str, indent="") -> list[str]:
+        if field.shape is None:
+            return [f"{indent}{result_statement.format(expr=self.get_type_compare_expr(f'{left}', f'{right}', field.type))}"]
+        elif isinstance(field.shape, int):
+            shape = (field.shape,)
+        else:
+            shape = field.shape
+
+        shape_repr = ""
+        if shape:
+            shape_repr = f"[{']['.join(map(str, shape))}]"
+
+        code = []
+
+        subscript = ""
+        for i, s in enumerate(shape):
+            code.append(f"{indent}for i{i} in range({s}):")
+            indent += "  "
+            subscript += f"[i{i}]"
+
+        code.extend([
+            f"{indent}if not ({self.get_type_compare_expr(f'{left}{subscript}', f'{right}{subscript}', field.type)}):",
+            f"{indent}  break",
+        ])
+
+        for i, s in reversed(list(enumerate(shape))):
+            indent = indent[:-2]
+            if i == 0:
+                code.extend([
+                    f"{indent}else:",
+                    f"{indent}  {result_statement.format(expr='1')}",
+                ])
+            else:
+                code.extend([
+                    f"{indent}else:",
+                    f"{indent}  continue",
+                    f"{indent}break",
+                ])
+        return code
+
+    def get_struct_code(self, t: StructType, mask: Optional[Sequence[bool]] = None, threshold: bool = False, _structs_declared: Optional[set[Type]] = None) -> list[str]:
+        """Declares a struct type and adds a comparison for it"""
+        if not _structs_declared:
+            _structs_declared = set()
+        name = self.get_type_c_name(t)
+        _structs_declared.add(t)
+        code = []
+        for field in t.fields:
+            if isinstance(field.type, StructType) and field.type not in _structs_declared:
+                code.extend(self.get_struct_code(field.type, _structs_declared=_structs_declared))
+        code.extend(self.get_struct_cdef(t, name))
+
+        args = f"const {name} a, const {name} b"
+        if threshold:
+            args += ", const long threshold"
+        if self.atol is not None:
+            args += ", const double atol"
+
+        code.extend([
+            f"cdef int compare_{name}({args}):",
+            f"  cdef int result = 0",
+        ])
+        for _i, field in enumerate(t.fields):
+            if mask is None or mask[_i]:
+                code.extend(self.get_struct_field_comparison(field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", indent="  "))
+        code.append(f"  return result >= {'threshold' if threshold else _i + 1}")
+        return code
+
+
 def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, struct_threshold: Optional[int] = None,
                     struct_mask: Optional[Sequence[bool]] = None, **kwargs):
     """
@@ -207,110 +318,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
 
     source_code = list(IMPORT)
     init_args = {"a": a, "b": b}
-    _structs_declared = set()
-
-    def _get_type_c_name(_t: Type) -> str:
-        """Picks a name for the provided type"""
-        if isinstance(_t, AtomicType):
-            return _t.c
-        elif isinstance(_t, StructType):
-            return f"struct_{_t.get_fingerprint()[:16]}"
-        else:
-            raise NotImplementedError(f"unknown type: {_t}")
-
-    def _get_struct_cdef(_t: StructType, _name: str) -> list[str]:
-        """Prepares a cdef section for the provided struct type"""
-        _code = [f"cdef packed struct {_name}:"]
-        for _i, _field in enumerate(_t.fields):
-            if _field.shape is None:
-                _postfix = ""
-            elif isinstance(_field.shape, int):
-                _postfix = f"[{_field.shape}]"
-            else:
-                _postfix = f"[{']['.join(map(str, _field.shape))}]"
-            _code.append(f"  const {_get_type_c_name(_field.type)} f{_i}{_postfix}")
-        return _code
-
-    def _get_type_compare_expr(_left: str, _right: str, _type: Type) -> str:
-        """Prepares a comparison expression for the provided type"""
-        if isinstance(_type, AtomicType):
-            if atol is not None and _type.typecode != 's':
-                return  f"({_left} - {_right}) >= -atol and ({_left} - {_right}) <= atol"
-            else:
-                return f"{_left} == {_right}"
-        elif isinstance(_type, StructType):
-            _fields = [_left, _right]
-            if atol is not None:
-                _fields.append("atol")
-            return f"compare_{_get_type_c_name(_type)}({', '.join(_fields)})"
-        else:
-            raise ValueError(f"unknown type: {_type}")
-
-    def _get_struct_field_comparison(_field: StructField, _left: str, _right: str, _result_statement: str, _indent="") -> list[str]:
-        if _field.shape is None:
-            return [f"{_indent}{_result_statement.format(expr=_get_type_compare_expr(f'{_left}', f'{_right}', _field.type))}"]
-        elif isinstance(_field.shape, int):
-            _shape = (_field.shape,)
-        else:
-            _shape = _field.shape
-
-        _shape_repr = ""
-        if _shape:
-            _shape_repr = f"[{']['.join(map(str, _shape))}]"
-
-        _code = []
-
-        _index = ""
-        for _i, _s in enumerate(_shape):
-            _code.append(f"{_indent}for i{_i} in range({_s}):")
-            _indent += "  "
-            _index += f"[i{_i}]"
-
-        _code.extend([
-            f"{_indent}if not ({_get_type_compare_expr(f'{_left}{_index}', f'{_right}{_index}', _field.type)}):",
-            f"{_indent}  break",
-        ])
-
-        for _i, _s in reversed(list(enumerate(_shape))):
-            _indent = _indent[:-2]
-            if _i == 0:
-                _code.extend([
-                    f"{_indent}else:",
-                    f"{_indent}  {_result_statement.format(expr='1')}",
-                ])
-            else:
-                _code.extend([
-                    f"{_indent}else:",
-                    f"{_indent}  continue",
-                    f"{_indent}break",
-                ])
-        return _code
-
-    def _get_struct_code(_t: StructType, _mask: Optional[Sequence[bool]] = None, _threshold: bool = False) -> list[str]:
-        """Declares a struct type and adds a comparison for it"""
-        _name = _get_type_c_name(_t)
-        _structs_declared.add(_t)
-        _code = []
-        for _field in _t.fields:
-            if isinstance(_field.type, StructType) and _field.type not in _structs_declared:
-                _code.extend(_get_struct_code(_field.type))
-        _code.extend(_get_struct_cdef(_t, _name))
-
-        _args = f"const {_name} a, const {_name} b"
-        if _threshold:
-            _args += ", const long threshold"
-        if atol is not None:
-            _args += ", const double atol"
-
-        _code.extend([
-            f"cdef int compare_{_name}({_args}):",
-            f"  cdef int result = 0",
-        ])
-        for _i, _field in enumerate(_t.fields):
-            if _mask is None or _mask[_i]:
-                _code.extend(_get_struct_field_comparison(_field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", _indent="  "))
-        _code.append(f"  return result >= {'threshold' if _threshold else _i + 1}")
-        return _code
+    codegen = _MVCodeGen(atol=atol)
 
     if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
         dtype_str = "object"
@@ -319,13 +327,13 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             (f"{dtype_str}[:]", "b"),
         ]
     else:
-        dtype_str = _get_type_c_name(struct_a)
+        dtype_str = codegen.get_type_c_name(struct_a)
         fields = [
             (f"const {dtype_str}[:]", "a"),
             (f"const {dtype_str}[:]", "b"),
         ]
         if isinstance(struct_a, StructType):
-            source_code.extend(_get_struct_code(struct_a, _mask=struct_mask, _threshold=True))
+            source_code.extend(codegen.get_struct_code(struct_a, mask=struct_mask, threshold=True))
             fields.append((f"long", "threshold"))
             init_args["threshold"] = struct_threshold if struct_threshold is not None else len(struct_a.fields)
 
