@@ -202,3 +202,16 @@ def test_np_record_nested_1():
     assert comparison_backend(0, 0) is False
     assert comparison_backend(0, 1) is True
     assert comparison_backend(2, 0) is True
+
+
+def test_np_record_nested_2():
+    dtype = np.dtype([("m2x3", "i8", (2, 3))])
+
+    v0 = (((1, 2, 3), (4, 5, 6)),)
+    v1 = (((1, 2, 3), (4, 4, 6)),)
+    a = np.array([v0, v1], dtype=dtype)
+
+    comparison_backend = wrap((a, a), struct_threshold=1)
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(1, 1) is True
+    assert comparison_backend(0, 1) is False

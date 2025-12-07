@@ -5,7 +5,7 @@ from operator import mul
 
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .cython.struct3118 import parse_3118, Type, AtomicType, StructType
+from .cython.struct3118 import parse_3118, Type, AtomicType, StructType, StructField
 
 IMPORT = (
     "import cython",
@@ -209,7 +209,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     init_args = {"a": a, "b": b}
     _structs_declared = set()
 
-    def _type_c_name(_t: Type) -> str:
+    def _get_type_c_name(_t: Type) -> str:
         """Picks a name for the provided type"""
         if isinstance(_t, AtomicType):
             return _t.c
@@ -218,7 +218,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         else:
             raise NotImplementedError(f"unknown type: {_t}")
 
-    def _struct_def(_t: StructType, _name: str) -> list[str]:
+    def _get_struct_cdef(_t: StructType, _name: str) -> list[str]:
         """Prepares a cdef section for the provided struct type"""
         _code = [f"cdef packed struct {_name}:"]
         for _i, _field in enumerate(_t.fields):
@@ -227,11 +227,11 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             elif isinstance(_field.shape, int):
                 _postfix = f"[{_field.shape}]"
             else:
-                _postfix = f"[{','.join(map(str, _field.shape))}]"
-            _code.append(f"  {_type_c_name(_field.type)} f{_i}{_postfix}")
+                _postfix = f"[{']['.join(map(str, _field.shape))}]"
+            _code.append(f"  const {_get_type_c_name(_field.type)} f{_i}{_postfix}")
         return _code
 
-    def _compare_expr(_left: str, _right: str, _type: Type) -> str:
+    def _get_type_compare_expr(_left: str, _right: str, _type: Type) -> str:
         """Prepares a comparison expression for the provided type"""
         if isinstance(_type, AtomicType):
             if atol is not None and _type.typecode != 's':
@@ -242,47 +242,64 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             _fields = [_left, _right]
             if atol is not None:
                 _fields.append("atol")
-            return f"compare_{_type_c_name(_type)}({', '.join(_fields)})"
+            return f"compare_{_get_type_c_name(_type)}({', '.join(_fields)})"
         else:
             raise ValueError(f"unknown type: {_type}")
 
+    def _get_struct_field_comparison(_field: StructField, _left: str, _right: str, _result_statement: str, _indent="") -> list[str]:
+        if _field.shape is None:
+            return [f"{_indent}{_result_statement.format(expr=_get_type_compare_expr(f'{_left}', f'{_right}', _field.type))}"]
+        elif isinstance(_field.shape, int):
+            _shape = (_field.shape,)
+        else:
+            _shape = _field.shape
+
+        _shape_repr = ""
+        if _shape:
+            _shape_repr = f"[{']['.join(map(str, _shape))}]"
+
+        _code = []
+
+        _index = ""
+        for _i, _s in enumerate(_shape):
+            _code.append(f"{_indent}for i{_i} in range({_s}):")
+            _indent += "  "
+            _index += f"[i{_i}]"
+
+        _code.extend([
+            f"{_indent}if not ({_get_type_compare_expr(f'{_left}{_index}', f'{_right}{_index}', _field.type)}):",
+            f"{_indent}  break",
+        ])
+
+        for _i, _s in reversed(list(enumerate(_shape))):
+            _indent = _indent[:-2]
+            if _i == 0:
+                _code.extend([
+                    f"{_indent}else:",
+                    f"{_indent}  {_result_statement.format(expr='1')}",
+                ])
+            else:
+                _code.extend([
+                    f"{_indent}else:",
+                    f"{_indent}  continue",
+                    f"{_indent}break",
+                ])
+        return _code
+
     def _declare_struct(t: StructType, mask: Optional[Sequence[bool]] = None, threshold: bool = False):
         """Declares a struct type and adds a comparison for it"""
-        name = _type_c_name(t)
+        name = _get_type_c_name(t)
         _structs_declared.add(t)
         for _field in t.fields:
             if isinstance(_field.type, StructType) and _field.type not in _structs_declared:
                 _declare_struct(_field.type)
-        source_code.extend(_struct_def(t, name))
+        source_code.extend(_get_struct_cdef(t, name))
         _code = []
         _i = 0
         _need_temp = False
         for _i, _field in enumerate(t.fields):
             if mask is None or mask[_i]:
-                if _field.shape is None:
-                    _shape = tuple()
-                elif isinstance(_field.shape, int):
-                    _shape = (_field.shape,)
-                else:
-                    _shape = _field.shape
-
-                _n_elements = 1
-                if _shape:
-                    _n_elements = reduce(mul, _shape)
-                if _n_elements > 1:
-                    _code.append(f"  temp = 0")
-                    _need_temp = True
-
-                _indent = ""
-                _index = ""
-                for _j, _s in enumerate(_shape):
-                    _code.append(f"  {_indent}for i{_j} in range({_s}):")
-                    _indent += "  "
-                    _index += f"[i{_j}]"
-                _accumulator = "result" if _n_elements == 1 else "temp"
-                _code.append(f"  {_indent}{_accumulator} += {_compare_expr(f'a.f{_i}{_index}', f'b.f{_i}{_index}', _field.type)}")
-                if _n_elements != 1:
-                    _code.append(f"  result += temp == {_n_elements}")
+                _code.extend(_get_struct_field_comparison(_field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", _indent="  "))
         fields = f"const {name} a, const {name} b"
         if threshold:
             fields += ", const long threshold"
@@ -304,7 +321,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
             (f"{dtype_str}[:]", "b"),
         ]
     else:
-        dtype_str = _type_c_name(struct_a)
+        dtype_str = _get_type_c_name(struct_a)
         fields = [
             (f"const {dtype_str}[:]", "a"),
             (f"const {dtype_str}[:]", "b"),
