@@ -111,7 +111,7 @@ class Chunk:
     data_a: Sequence[Any]
     data_b: Sequence[Any]
     eq: bool
-    details: Optional[Sequence["Diff"]] = None
+    details: Optional[Sequence[Any]] = None
 
     def to_string(
             self,

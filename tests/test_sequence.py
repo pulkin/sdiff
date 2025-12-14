@@ -222,16 +222,25 @@ def test_nested_np(monkeypatch, max_depth):
         ratio=5. / 6,
         diffs=[
             Chunk(data_a=a[:3], data_b=b[:3], eq=True, details=[
-                None,
-                Diff(ratio=2 / 3, diffs=[
-                    Chunk(data_a=np.array([3]), data_b=np.array([3]), eq=True),
-                    Chunk(data_a=np.array([4]), data_b=np.array([9]), eq=False),
-                    Chunk(data_a=np.array([5]), data_b=np.array([5]), eq=True),
+                Diff(ratio=1.0, diffs=[
+                    Chunk(data_a=a[0], data_b=b[0], eq=True, details=[True, True, True]),
                 ]),
-                None,
+                Diff(ratio=2 / 3, diffs=[
+                    Chunk(data_a=np.array([3]), data_b=np.array([3]), eq=True, details=[True]),
+                    Chunk(data_a=np.array([4]), data_b=np.array([9]), eq=False),
+                    Chunk(data_a=np.array([5]), data_b=np.array([5]), eq=True, details=[True]),
+                ]),
+                Diff(ratio=1.0, diffs=[
+                    Chunk(data_a=a[2], data_b=b[2], eq=True, details=[True, True, True]),
+                ]),
             ]),
             Chunk(data_a=a[3:4], data_b=b[3:4], eq=False),
-            Chunk(data_a=a[4:], data_b=b[4:], eq=True),
+            Chunk(data_a=a[4:], data_b=b[4:], eq=True, details=[
+                Diff(ratio=1.0, diffs=[
+                    Chunk(data_a=_a, data_b=_b, eq=True, details=[True, True, True]),
+                ])
+                for _a, _b in zip(a[4:], b[4:])
+            ]),
         ]
     )
 

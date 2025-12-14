@@ -1,3 +1,5 @@
+from array import array
+
 import numpy as np
 import pytest
 
@@ -5,7 +7,7 @@ from sdiff.chunk import Diff, Chunk, Signature, ChunkSignature
 from sdiff.numpy import (diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff, dtype_diff,
                          align_inflate_arrays)
 
-from .util import np_chunk_eq, np_chunk_eq, np_raw_diff_eq
+from .util import np_chunk_eq, np_raw_diff_eq, np_chunk_eq_numpy_details
 
 
 @pytest.fixture
@@ -25,7 +27,10 @@ def test_equal(monkeypatch, a):
     assert diff(a, a) == Diff(
         ratio=1,
         diffs=[
-            Chunk(data_a=a, data_b=a, eq=True)
+            Chunk(data_a=a, data_b=a, eq=True, details=[
+                Diff(ratio=1, diffs=[Chunk(data_a=row, data_b=row, eq=True)])
+                for row in a
+            ])
         ]
     )
 
@@ -367,7 +372,7 @@ def test_dtype(monkeypatch, a, a1, dtype):
 
 
 def test_to_plain(monkeypatch, a, a1):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_numpy_details)
 
     row_sig = Signature((
         ChunkSignature(3, 3, True),
@@ -583,7 +588,7 @@ def test_diff_record_zeros(monkeypatch):
 
     assert diff(a, b) == Diff(
         ratio=1,
-        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=True)],
+        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=True, details=[array('i', [1, 0, 1, 1, 0, 1])] * 10)],
     )
 
 
@@ -658,7 +663,12 @@ def test_diff_record_1(monkeypatch):
     )
     assert diff(a, b, record_min_ratio=0.79) == Diff(
         ratio=1,
-        diffs=[Chunk(data_a=np.zeros(shape=10, dtype=d_common), data_b=np.zeros(shape=10, dtype=d_common), eq=True)],
+        diffs=[Chunk(
+            data_a=np.zeros(shape=10, dtype=d_common),
+            data_b=np.zeros(shape=10, dtype=d_common),
+            eq=True,
+            details=[array('i', [1, 0, 1, 1, 0, 1])] * 10,
+        )],
     )
 
 
@@ -692,8 +702,8 @@ def test_diff_record_2(monkeypatch):
         ratio=2./3,
         diffs=[
             Chunk(data_a=a_aligned[:1], data_b=b_aligned[:1], eq=False),
-            Chunk(data_a=a_aligned[1:2], data_b=b_aligned[1:2], eq=True),
+            Chunk(data_a=a_aligned[1:2], data_b=b_aligned[1:2], eq=True, details=[array('i', [1, 1, 1])]),
             Chunk(data_a=a_aligned[2:3], data_b=b_aligned[2:3], eq=False),
-            Chunk(data_a=a_aligned[3:], data_b=b_aligned[3:], eq=True),
+            Chunk(data_a=a_aligned[3:], data_b=b_aligned[3:], eq=True, details=[array('i', [1, 1, 1])] * 3),
         ],
     )
