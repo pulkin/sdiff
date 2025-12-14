@@ -129,12 +129,10 @@ def test_3118_np_nested_struct(nested_np_dtype):
 def test_buffer_protocol_np(dtype):
     if dtype in (np.float16, np.str_):
         pytest.skip("not supported in cython")
-    comparison_backend = wrap((
-        np.array([0, 1, 2], dtype=dtype),
-        np.array([2, 3], dtype=dtype),
-    ))
-    assert comparison_backend(0, 0) == 0
-    assert comparison_backend(2, 0) == 1
+    comparison_backend = wrap((np.array([0, 1, 2], dtype=dtype), np.array([2, 3], dtype=dtype)))
+
+    assert comparison_backend(0, 0) is False
+    assert comparison_backend(2, 0) is True
 
 
 def test_np_record():
@@ -146,31 +144,53 @@ def test_np_record():
     assert comparison_backend(0, 2) is False
     assert comparison_backend(1, 2) is False
 
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
+
     comparison_backend = wrap((a, a), struct_threshold=1)
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is True
     assert comparison_backend(0, 2) is True
     assert comparison_backend(1, 2) is False
 
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
+
 
 def test_np_record_atol():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 10.), b"a"), (0, (1., 10.), b"b"), (1, (0., 10.), b"c")], dtype=dtype)
     comparison_backend = wrap((a, a), atol=1.5)
+
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is False
     assert comparison_backend(0, 2) is False
     assert comparison_backend(1, 2) is False
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 1, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [1, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [1, 1, 0])
 
 
 def test_np_record_mask():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
     a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
     comparison_backend = wrap((a, a), struct_mask=[False, True, True], struct_threshold=1)
+
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is False
     assert comparison_backend(0, 2) is True
     assert comparison_backend(1, 2) is False
+
+    assert comparison_backend.resolve(0, 0) == array('i', [0, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [0, 0, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
 
 
 @pytest.mark.xfail(reason="https://github.com/cython/cython/issues/7191")
@@ -184,9 +204,9 @@ def test_np_record_nested_0():
         np.array([(0, [cat, cat]), (1, [cat, bat]), (2, [bat, cat])], dtype=dtype),
         np.array([(2, [bat, cat_]), (0, [cat_, bat])], dtype=dtype),
     ))
-    assert comparison_backend(0, 0) == 0
-    assert comparison_backend(0, 1) == 0.5
-    assert comparison_backend(2, 0) == 0.5
+    assert comparison_backend(0, 0) is False
+    assert comparison_backend(0, 1) is True
+    assert comparison_backend(2, 0) is True
 
 
 def test_np_record_nested_1():
@@ -203,6 +223,10 @@ def test_np_record_nested_1():
     assert comparison_backend(0, 1) is True
     assert comparison_backend(2, 0) is True
 
+    assert comparison_backend.resolve(0, 0) == array('i', [0, 0, 0])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
+    assert comparison_backend.resolve(2, 0) == array('i', [1, 1, 0])
+
 
 def test_np_record_nested_2():
     dtype = np.dtype([("m2x3", "i8", (2, 3))])
@@ -215,3 +239,24 @@ def test_np_record_nested_2():
     assert comparison_backend(0, 0) is True
     assert comparison_backend(1, 1) is True
     assert comparison_backend(0, 1) is False
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1])
+    assert comparison_backend.resolve(1, 1) == array('i', [1])
+    assert comparison_backend.resolve(0, 1) == array('i', [0])
+
+
+def test_np_record_nested_3():
+    dtype = np.dtype([("m2x3", "i8", (2, 3))])
+
+    v0 = (((1, 2, 3), (4, 5, 6)),)
+    v1 = (((1, 2, 3), (4, 4, 6)),)
+    a = np.array([v0, v1], dtype=dtype)
+
+    comparison_backend = wrap((a, a), struct_threshold=1, atol=1)
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(1, 1) is True
+    assert comparison_backend(0, 1) is True
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1])
+    assert comparison_backend.resolve(1, 1) == array('i', [1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1])

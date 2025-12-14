@@ -1,7 +1,5 @@
 from typing import Optional, Callable, Any
 from collections.abc import Sequence
-from functools import reduce
-from operator import mul
 
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
@@ -9,7 +7,10 @@ from .cython.struct3118 import parse_3118, Type, AtomicType, StructType, StructF
 
 IMPORT = (
     "import cython",
+    "from cpython cimport array",
+    "import array",
     "from sdiff.cython.compare cimport ComparisonBackend",
+    "cdef array.array _int_array_template = array.array('i', [])"
 )
 CLASS_DEF = (
     "cdef class Backend(ComparisonBackend):",  # required to inherit from the base class
@@ -212,10 +213,6 @@ class _MVCodeGen:
         else:
             shape = field.shape
 
-        shape_repr = ""
-        if shape:
-            shape_repr = f"[{']['.join(map(str, shape))}]"
-
         code = []
 
         subscript = ""
@@ -244,7 +241,13 @@ class _MVCodeGen:
                 ])
         return code
 
-    def get_struct_code(self, t: StructType, mask: Optional[Sequence[bool]] = None, threshold: bool = False, _structs_declared: Optional[set[Type]] = None) -> list[str]:
+    def get_struct_code(
+            self,
+            t: StructType,
+            mask: Optional[Sequence[bool]] = None,
+            threshold: bool = False,
+            _structs_declared: Optional[set[Type]] = None,
+    ) -> list[str]:
         """Declares a struct type and adds a comparison for it"""
         if not _structs_declared:
             _structs_declared = set()
@@ -270,6 +273,31 @@ class _MVCodeGen:
             if mask is None or mask[_i]:
                 code.extend(self.get_struct_field_comparison(field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", indent="  "))
         code.append(f"  return result >= {'threshold' if threshold else _i + 1}")
+        return code
+
+    def get_resolve_code(
+            self,
+            t: StructType,
+            mask: Optional[Sequence[bool]] = None,
+    ) -> list[str]:
+        name = self.get_type_c_name(t)
+        code = []
+
+        args = f"const {name} a, const {name} b"
+        if self.atol is not None:
+            args += ", const double atol"
+
+        code.extend([
+            f"@cython.wraparound(False)",
+            f"@cython.boundscheck(False)",
+            f"cdef resolve_{name}({args}):",
+            f"  cdef array.array result = array.clone(_int_array_template, {len(t.fields)}, zero=True)",
+            f"  cdef int[:] result_view = result"
+        ])
+        for _i, field in enumerate(t.fields):
+            if mask is None or mask[_i]:
+                code.extend(self.get_struct_field_comparison(field, f"a.f{_i}", f"b.f{_i}", f"result_view[{_i}] = {{expr}}", indent="  "))
+        code.append(f"  return result")
         return code
 
 
@@ -334,6 +362,7 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         ]
         if isinstance(struct_a, StructType):
             source_code.extend(codegen.get_struct_code(struct_a, mask=struct_mask, threshold=True))
+            source_code.extend(codegen.get_resolve_code(struct_a, mask=struct_mask))
             fields.append((f"long", "threshold"))
             init_args["threshold"] = struct_threshold if struct_threshold is not None else len(struct_a.fields)
 
@@ -349,10 +378,14 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     if isinstance(struct_a, AtomicType):
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
     elif isinstance(struct_a, StructType):
-        _args = "self.a[i], self.b[j], self.threshold"
+        _args = ""
         if atol is not None:
             _args += ", self.atol"
-        source_code.append(f"    return compare_{dtype_str}({_args})")
+        source_code.append(f"    return compare_{dtype_str}(self.a[i], self.b[j], self.threshold{_args})")
+        source_code.extend([
+            *RESOLVE_DEF,
+            f"    return resolve_{dtype_str}(self.a[i], self.b[j]{_args})",
+        ])
     else:
         raise ValueError(f"unknown type: {struct_a}")
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
