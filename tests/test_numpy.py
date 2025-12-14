@@ -5,7 +5,7 @@ from sdiff.chunk import Diff, Chunk, Signature, ChunkSignature
 from sdiff.numpy import (diff, get_row_col_diff, align_inflate, diff_aligned_2d, NumpyDiff, dtype_diff,
                          align_inflate_arrays)
 
-from .util import np_chunk_eq, np_chunk_eq_aligned, np_raw_diff_eq
+from .util import np_chunk_eq, np_chunk_eq, np_raw_diff_eq
 
 
 @pytest.fixture
@@ -367,7 +367,7 @@ def test_dtype(monkeypatch, a, a1, dtype):
 
 
 def test_to_plain(monkeypatch, a, a1):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
     row_sig = Signature((
         ChunkSignature(3, 3, True),
@@ -565,7 +565,7 @@ def test_align_inflate_arrays():
 
 
 def test_diff_record_zeros(monkeypatch):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
@@ -588,7 +588,7 @@ def test_diff_record_zeros(monkeypatch):
 
 
 def test_diff_record_0(monkeypatch):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
@@ -637,7 +637,7 @@ def test_diff_record_0(monkeypatch):
 
 
 def test_diff_record_1(monkeypatch):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
@@ -663,7 +663,7 @@ def test_diff_record_1(monkeypatch):
 
 
 def test_diff_record_2(monkeypatch):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq_aligned)
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
 
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
