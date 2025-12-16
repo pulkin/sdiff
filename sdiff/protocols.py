@@ -54,7 +54,7 @@ def wrap_python_callable(fun: Callable[[int, int], Any], resolver: Optional[Call
     """
     Wraps a python callable into a comparison protocol.
 
-    The callable has to accept to integers (two positions in a, b sequences) and return
+    The callable has to accept two integers (two positions in a, b sequences) and return
     an object that can be cast to a boolean indicating whether the elements can be aligned or not.
 
     This protocol is potentially slow as it will call ``fun`` from python runtime.
