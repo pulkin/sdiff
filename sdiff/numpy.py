@@ -1,7 +1,7 @@
 from math import ceil
-from typing import Optional, Union, NamedTuple
+from typing import Any, Optional, Union, NamedTuple
 from collections.abc import Sequence
-from itertools import groupby
+from itertools import groupby, chain
 from functools import partial
 
 import numpy as np
@@ -10,6 +10,7 @@ from .chunk import Diff, Chunk, ChunkSignature, Signature
 from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
 from .sequence import diff_nested, diff as sequence_diff, _pop_optional
 from .cython.compare import ComparisonBackend
+from .cython.struct3118 import parse_3118, StructType
 from .protocols import wrap
 
 
@@ -84,31 +85,32 @@ def diff(
     -------
     A diff object describing the diff.
     """
-    a = np.ascontiguousarray(a)
-    b = np.ascontiguousarray(b)
     if a.ndim != b.ndim:
         raise ValueError(f"{a.ndim=} != {b.ndim=}")
 
     ndim = a.ndim
     struct_threshold = None
-    struct_mask = None
+    struct_field_map = None
 
     if a.dtype.names is not None or b.dtype.names is not None:
         # compare as record arrays
         dtype_d = dtype_diff(
             a=a,
             b=b,
-            names=record_compare_names,
+            look_field_names=record_compare_names,
             min_ratio=record_min_ratio,
             max_cost=record_max_cost,
             kernel=kernel,
-            data=record_compare_data,
+            look_field_data=record_compare_data,
             data_atol=atol,
             data_min_ratio=min_ratio,
             data_max_cost=max_cost,
         )
-        a, b = align_inflate_arrays(a, b, dtype_d, common_dtype=True)
-        struct_mask = dtype_d.signature.mask
+        struct_field_map = list(chain(*(
+            zip(chunk.data_a, chunk.data_b)
+            for chunk in dtype_d.diffs
+            if chunk.eq
+        )))
         struct_threshold = max(
             int(ceil(dtype_d.signature.max_cost * record_min_ratio / 2)),
             int(ceil((dtype_d.signature.max_cost - record_max_cost) / 2)),
@@ -119,7 +121,7 @@ def diff(
         b=b,
         atol=atol,
         struct_threshold=struct_threshold,
-        struct_mask=struct_mask,
+        struct_field_map=struct_field_map,
         min_ratio=min_ratio,
         max_cost=max_cost,
         max_calls=max_calls,
@@ -131,29 +133,53 @@ def diff(
     )
 
 
-def _to_record(arg):
+def _to_record(arg, look_field_names: bool, look_field_dtypes: bool) -> tuple[list[str], list[Any], Optional[np.recarray]]:
     if isinstance(arg, np.ndarray):
         if arg.dtype.names is None:
-            return np.rec.fromarrays([arg], dtype=np.dtype([("f", arg.dtype)]))
+            data = np.rec.fromarrays([arg], dtype=np.dtype([("field", arg.dtype)]))
+        else:
+            data = arg
+        dtype = data.dtype
     elif isinstance(arg, np.dtype):
+        data = None
         if arg.names is None:
-            return np.dtype([("f", arg)])
+            dtype = np.dtype([("f", arg)])
+        else:
+            dtype = arg
     else:
-        raise ValueError(f"unbknown argument: {arg}")
-    return arg
+        raise ValueError(f"unknown argument: {arg}")
+
+    parsed_type = parse_3118(memoryview(np.rec.fromarrays([[]] * len(dtype.fields), dtype=dtype)).format)
+    assert isinstance(parsed_type, StructType)
+    parsed_fields = parsed_type.fields
+    names = [i.caption for i in parsed_fields]
+
+    # shapes always belong to the signature
+    signature = [[i.shape for i in parsed_fields]]
+    if look_field_names:
+        signature.append(names)
+    if look_field_dtypes:
+        signature.append([i.type for i in parsed_fields])
+
+    if signature:
+        fingerprints = list(zip(*signature))
+    else:
+        fingerprints = [None] * len(names)
+    return names, fingerprints, data
 
 
 def dtype_diff(
         a,
         b,
-        names: bool = False,
         min_ratio: Union[float, tuple[float]] = MIN_RATIO,
         max_cost: Union[int, tuple[int]] = MAX_COST,
         max_calls: Union[int, tuple[int]] = MAX_CALLS,
         eq_only: bool = False,
         kernel: Optional[str] = None,
         rtn_diff: bool = True,
-        data: bool = True,
+        look_field_names: bool = True,
+        look_field_dtypes: bool = False,
+        look_field_data: bool = False,
         data_atol: Optional[float] = None,
         data_min_ratio: float = MIN_RATIO,
         data_max_cost: int = MAX_COST,
@@ -167,8 +193,6 @@ def dtype_diff(
     a
     b
         Numpy dtypes.
-    names
-        If True, requires field names to be the same.
     min_ratio
         The ratio below which the algorithm exits. The values closer to 1
         typically result in faster run times while setting to 0 will force
@@ -195,8 +219,12 @@ def dtype_diff(
         If True, computes and returns the diff. Otherwise, returns the
         similarity ratio only. Computing the similarity ratio only is
         typically faster and consumes less memory.
-    data
-        If True, and both a, b are arrays, will use their data to align fields.
+    look_field_names
+        If True, requires aligned fields to have the same name.
+    look_field_dtypes
+        If True, requires aligned fields to have the same data type.
+    look_field_data
+        If True, and both a, b are arrays, requires aligned fields to have data aligned.
     data_atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]`` for comparing data.
@@ -209,70 +237,36 @@ def dtype_diff(
     -------
     The resulting diff between records' fields.
     """
-    a = _to_record(a)
-    b = _to_record(b)
-
-    data_a = data_b = None
-
-    if isinstance(a, np.ndarray):
-        data_a, a = a, a.dtype
-    else:
-        data = False
-
-    if isinstance(b, np.ndarray):
-        data_b, b = b, b.dtype
-    else:
-        data = False
+    names_a, fingerprints_a, data_a = _to_record(a, look_field_names, look_field_dtypes)
+    names_b, fingerprints_b, data_b = _to_record(b, look_field_names, look_field_dtypes)
 
     if (data_a is None) != (data_b is None):
-        raise ValueError("a and b have to be both arrays or both dtypes")
+        raise ValueError(f"inconsistent inputs: {type(a)} vs {type(b)}")
 
-    fields_a = list((name, t[0]) for name, t in a.fields.items())
-    fields_b = list((name, t[0]) for name, t in b.fields.items())
+    if data_a is None or data_b is None:
+        look_field_data = False
 
-    if data:
+    if look_field_data:
         # a comparison taking into account field data
-        if names:
-            def _eq(i: int, j: int) -> bool:
-                name_a, type_a = fields_a[i]
-                name_b, type_b = fields_b[j]
-                return (
-                    type_a == type_b and
-                    name_a == name_b and
-                    sequence_diff(
-                        a=data_a[name_a],
-                        b=data_b[name_b],
-                        rtn_diff=False,
-                        eq_only=True,
-                        atol=data_atol,
-                        min_ratio=data_min_ratio,
-                        max_cost=data_max_cost,
-                    )
+        def _eq(i: int, j: int) -> bool:
+            return (
+                fingerprints_a[i] == fingerprints_b[j] and
+                sequence_diff(
+                    a=data_a[names_a[i]],
+                    b=data_b[names_b[j]],
+                    rtn_diff=False,
+                    eq_only=True,
+                    atol=data_atol,
+                    min_ratio=data_min_ratio,
+                    max_cost=data_max_cost,
                 )
-        else:
-            def _eq(i: int, j: int) -> bool:
-                name_a, type_a = fields_a[i]
-                name_b, type_b = fields_b[j]
-                return (
-                    type_a == type_b and
-                    sequence_diff(
-                        a=data_a[name_a],
-                        b=data_b[name_b],
-                        rtn_diff=False,
-                        eq_only=True,
-                        atol=data_atol,
-                        min_ratio=data_min_ratio,
-                        max_cost=data_max_cost,
-                    )
-                )
+            )
     else:
         # a simple comparison not involving data
-        _eq = None
-        if not names:
-            _eq = ([v for _, v in fields_a], [v for _, v in fields_b])
+        _eq = (fingerprints_a, fingerprints_b)
     return sequence_diff(
-        fields_a,
-        fields_b,
+        names_a,
+        names_b,
         eq=_eq,
         min_ratio=min_ratio,
         max_cost=max_cost,
@@ -287,7 +281,7 @@ def _anonymize_fields(fields: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return [(f"field{i}", t) for i, (_, t) in enumerate(fields)]
 
 
-def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff, common_dtype: bool = False) -> tuple[np.ndarray, np.ndarray]:
+def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tuple[np.ndarray, np.ndarray]:
     """
     Aligns arrays towards a common (record) dtype.
     Given two record arrays and the dtype diff, produces the corresponding pair of arrays with the same record
@@ -300,21 +294,15 @@ def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff, common_
         The arrays to align.
     field_diff
         A diff telling how to align fields.
-    common_dtype
-        If True, uses a common dtype with anonymized field names for both arrays.
 
     Returns
     -------
     A pair of aligned inflated arrays.
     """
-    a = _to_record(a)
-    b = _to_record(b)
+    _, _, a = _to_record(a, look_field_names=False, look_field_dtypes=True)
+    _, _, b = _to_record(b, look_field_names=False, look_field_dtypes=True)
 
-    dtype_a, dtype_b = map(list, field_diff.get_inflated_ab())
-    if common_dtype:
-        dtype_a = dtype_b = np.dtype(_anonymize_fields(dtype_a))
-    else:
-        dtype_a, dtype_b = map(np.dtype, (dtype_a, dtype_b))
+    names_a, names_b = field_diff.get_inflated_ab()
     init_a, init_b = field_diff.with_data(
         data_a=[a[field] for field in a.dtype.fields],
         data_b=[b[field] for field in b.dtype.fields],
@@ -323,7 +311,7 @@ def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff, common_
         hook_b_a=partial(np.zeros_like, shape=b.shape),
     )
 
-    return np.rec.fromarrays(init_a, dtype=dtype_a), np.rec.fromarrays(init_b, dtype=dtype_b)
+    return np.rec.fromarrays(init_a, names=names_a), np.rec.fromarrays(init_b, names=names_b)
 
 
 def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
@@ -728,13 +716,19 @@ def diff_aligned_2d(
         threshold = int(ceil(threshold / 2))
 
         # crunch row differences without using the shallow algorithm
+        a_r = np.core.records.fromarrays(a_.T)
+        b_r = np.core.records.fromarrays(b_.T)
         raw_diff = sequence_diff(
             a=a_,
             b=b_,
             eq=wrap(
-                (np.core.records.fromarrays(a_.T), np.core.records.fromarrays(b_.T)),
+                (a_r, b_r),
                 atol=atol,
-                struct_mask=mask,
+                struct_field_map=[
+                    (i, j)
+                    for i, j, m in zip(a_r.dtype.fields, b_r.dtype.fields, mask)
+                    if m
+                ],
                 struct_threshold=threshold,
             ),
             min_ratio=min_ratio_here,

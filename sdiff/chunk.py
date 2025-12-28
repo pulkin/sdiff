@@ -40,10 +40,6 @@ class ChunkSignature:
     def max_cost(self) -> int:
         return self.size_a + self.size_b
 
-    @property
-    def mask(self) -> tuple[bool, ...]:
-        return (self.eq,) * (self.size_a if self.eq else (self.size_a + self.size_b))
-
     @classmethod
     def aligned(cls, n: int) -> "ChunkSignature":
         return cls(size_a=n, size_b=n, eq=True)
@@ -78,10 +74,6 @@ class Signature:
     @property
     def ratio(self) -> float:
         return self.cost / self.max_cost
-
-    @property
-    def mask(self) -> tuple[bool, ...]:
-        return reduce(add, [i.mask for i in self.parts])
 
     @classmethod
     def aligned(cls, n: int) -> "Signature":
@@ -428,7 +420,7 @@ class Diff:
                 b.append(chunk.data_a if hook_b_a is None else type(chunk.data_b)(map(hook_b_a, chunk.data_a)))
             b.append(chunk.data_b)
 
-        return reduce(add, a), reduce(add, b)
+        return list(reduce(add, a)), list(reduce(add, b))
 
     def with_data(self, data_a, data_b) -> "Diff":
         """

@@ -13,7 +13,7 @@ def test_diff():
     )
     assert diff.get_a() == "helloworld"
     assert diff.get_b() == "hiworld"
-    assert diff.get_inflated_ab() == ("hellohiworld", "hellohiworld")
+    assert diff.get_inflated_ab() == (list("hellohiworld"), list("hellohiworld"))
     assert diff.with_data(list(range(10)), list(range(10, 17))) == Diff(
         ratio=10./17,
         diffs=[

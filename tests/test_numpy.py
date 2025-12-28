@@ -451,7 +451,7 @@ def test_empty_col_2(monkeypatch, a, sig):
     )
 
 
-def test_dtype_diff():
+def test_dtype_diff_0():
     i8 = np.dtype("i8")
     f8 = np.dtype("f8")
     f4 = np.dtype("f4")
@@ -460,17 +460,16 @@ def test_dtype_diff():
     d1 = np.dtype([("ix", i8), ("value_1", f8), ("value_2", f8), ("comment", s32)])
     d2 = np.dtype([("ix", i8), ("value_3", f8), ("value_2", f4)])
 
-    assert dtype_diff(d1, d2, min_ratio=0) == Diff(
+    assert dtype_diff(d1, d2, min_ratio=0, look_field_names=False, look_field_dtypes=True) == Diff(
         ratio=4./7,
         diffs=[
-            Chunk(data_a=[("ix", i8), ("value_1", f8)], data_b=[("ix", i8), ("value_3", f8)], eq=True),
-            Chunk(data_a=[("value_2", f8), ("comment", s32)], data_b=[("value_2", f4)],
-                  eq=False),
+            Chunk(data_a=["ix", "value_1"], data_b=["ix", "value_3"], eq=True),
+            Chunk(data_a=["value_2", "comment"], data_b=["value_2"], eq=False),
         ]
     )
 
 
-def test_dtype_diff_names():
+def test_dtype_diff_1():
     i8 = np.dtype("i8")
     f8 = np.dtype("f8")
     f4 = np.dtype("f4")
@@ -479,20 +478,16 @@ def test_dtype_diff_names():
     d1 = np.dtype([("ix", i8), ("value_1", f8), ("value_2", f8), ("comment", s32)])
     d2 = np.dtype([("ix", i8), ("value_3", f8), ("value_2", f4)])
 
-    assert dtype_diff(d1, d2, names=True, min_ratio=0) == Diff(
+    assert dtype_diff(d1, d2, look_field_names=True, look_field_dtypes=True, min_ratio=0) == Diff(
         ratio=2./7,
         diffs=[
-            Chunk(data_a=[("ix", i8)], data_b=[("ix", i8)], eq=True),
-            Chunk(
-                data_a=[("value_1", f8), ("value_2", f8), ("comment", s32)],
-                data_b=[("value_3", f8), ("value_2", f4)],
-                eq=False,
-            ),
+            Chunk(data_a=["ix"], data_b=["ix"], eq=True),
+            Chunk(data_a=["value_1", "value_2", "comment"], data_b=["value_3", "value_2"], eq=False),
         ]
     )
 
 
-def test_dtype_diff_data():
+def test_dtype_diff_2():
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
 
@@ -505,14 +500,14 @@ def test_dtype_diff_data():
     data_a = np.rec.fromarrays([_a, _a + 10, _a + 20, ["s"] * 11, _a + 30], dtype=d1)
     data_b = np.rec.fromarrays([_b + 10, ["x"] * 9, _b + 30, _b + 90, _b + 80], dtype=d2)
 
-    assert dtype_diff(data_a, data_b, min_ratio=0) == Diff(
+    assert dtype_diff(data_a, data_b, min_ratio=0, look_field_names=False, look_field_dtypes=True, look_field_data=True) == Diff(
         ratio=0.4,
         diffs=[
-            Chunk(data_a=[("a1", i8)], data_b=[], eq=False),
-            Chunk(data_a=[("a2", i8)], data_b=[("b1", i8)], eq=True),
-            Chunk(data_a=[("a3", i8), ("string", s32)], data_b=[("string", s32)], eq=False),
-            Chunk(data_a=[("a4", i8)], data_b=[("b2", i8)], eq=True),
-            Chunk(data_a=[], data_b=[("b3", i8), ("b4", i8)], eq=False),
+            Chunk(data_a=["a1"], data_b=[], eq=False),
+            Chunk(data_a=["a2"], data_b=["b1"], eq=True),
+            Chunk(data_a=["a3", "string"], data_b=["string"], eq=False),
+            Chunk(data_a=["a4", ], data_b=["b2"], eq=True),
+            Chunk(data_a=[], data_b=["b3", "b4"], eq=False),
         ]
     )
 
@@ -523,8 +518,8 @@ def test_dtype_diff_atomic_0():
     a = np.arange(12)
     b = np.arange(1, 11)
 
-    assert dtype_diff(a.dtype, b.dtype, data=(a, b)) == Diff(ratio=1, diffs=[
-        Chunk(data_a=[("f", i8)], data_b=[("f", i8)], eq=True),
+    assert dtype_diff(a, b, look_field_data=True) == Diff(ratio=1, diffs=[
+        Chunk(data_a=["field"], data_b=["field"], eq=True),
     ])
 
 
@@ -534,8 +529,8 @@ def test_dtype_diff_atomic_1():
     a = np.arange(12)
     b = np.arange(1, 11)
 
-    assert dtype_diff(a, b, data_min_ratio=0.95) == Diff(ratio=0, diffs=[
-        Chunk(data_a=[("f", i8)], data_b=[("f", i8)], eq=False),
+    assert dtype_diff(a, b, look_field_data=True, data_min_ratio=0.95) == Diff(ratio=0, diffs=[
+        Chunk(data_a=["field"], data_b=["field"], eq=False),
     ])
 
 
@@ -554,7 +549,7 @@ def test_align_inflate_arrays():
     data_a = np.rec.fromarrays([_a, _a, _a, _as, _a], dtype=d1)
     data_b = np.rec.fromarrays([_b, _bs, _b, _b, _b], dtype=d2)
 
-    d = dtype_diff(data_a, data_b, data=False)
+    d = dtype_diff(data_a, data_b, look_field_names=False, look_field_dtypes=True)
     assert d.ratio == 0.8
 
     data_a_aligned, data_b_aligned = align_inflate_arrays(data_a, data_b, d)
@@ -578,17 +573,12 @@ def test_diff_record_zeros(monkeypatch):
     d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
     d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
 
-    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
-
     a = np.zeros(10, dtype=d1)
     b = np.zeros(10, dtype=d2)
 
-    a_aligned = np.zeros(10, dtype=d_common)
-    b_aligned = np.zeros(10, dtype=d_common)
-
     assert diff(a, b) == Diff(
         ratio=1,
-        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=True, details=[array('i', [1, 0, 1, 1, 0, 1])] * 10)],
+        diffs=[Chunk(data_a=a, data_b=b, eq=True, details=[array('i', [1, 1, 1, 1])] * 10)],
     )
 
 
@@ -600,8 +590,6 @@ def test_diff_record_0(monkeypatch):
 
     d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
     d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
-
-    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
 
     a = np.rec.fromarrays([
         np.full(shape=10, fill_value=1, dtype=i8),
@@ -618,26 +606,9 @@ def test_diff_record_0(monkeypatch):
         np.full(shape=10, fill_value=8, dtype=i8),
     ], dtype=d2)
 
-    a_aligned = np.rec.fromarrays([
-        np.full(shape=10, fill_value=1, dtype=i8),
-        np.zeros(shape=10, dtype=s32),
-        np.full(shape=10, fill_value=2, dtype=i8),
-        np.full(shape=10, fill_value=3, dtype=i8),
-        np.zeros(shape=10, dtype=s32),
-        np.full(shape=10, fill_value=4, dtype=i8),
-    ], dtype=d_common)
-    b_aligned = np.rec.fromarrays([
-        np.full(shape=10, fill_value=5, dtype=i8),
-        np.zeros(shape=10, dtype=s32),
-        np.full(shape=10, fill_value=6, dtype=i8),
-        np.full(shape=10, fill_value=7, dtype=i8),
-        np.zeros(shape=10, dtype=s32),
-        np.full(shape=10, fill_value=8, dtype=i8),
-    ], dtype=d_common)
-
     assert diff(a, b, min_ratio=0.01) == Diff(
         ratio=0,
-        diffs=[Chunk(data_a=a_aligned, data_b=b_aligned, eq=False)],
+        diffs=[Chunk(data_a=a, data_b=b, eq=False)],
     )
 
 
@@ -650,24 +621,20 @@ def test_diff_record_1(monkeypatch):
     d1 = np.dtype([("a1", i8), ("a2", i8), ("a3", i8), ("x1", s32), ("a4", i8)])
     d2 = np.dtype([("b1", i8), ("y1", s32), ("b2", i8), ("b3", i8), ("b4", i8)])
 
-    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", i8), ("field3", i8), ("field4", s32), ("field5", i8)])
-    d_uncommon = np.dtype([("field0", i8), ("field1", i8), ("field2", i8), ("field3", s32), ("field4", i8),
-                           ("field5", i8), ("field6", s32), ("field7", i8), ("field8", i8), ("field9", i8)])
-
     a = np.zeros(shape=10, dtype=d1)
     b = np.zeros(shape=10, dtype=d2)
 
     assert diff(a, b, record_min_ratio=0.81) == Diff(
         ratio=0,
-        diffs=[Chunk(data_a=np.zeros(shape=10, dtype=d_uncommon), data_b=np.zeros(shape=10, dtype=d_uncommon), eq=False)],
+        diffs=[Chunk(data_a=np.zeros(shape=10, dtype=d1), data_b=np.zeros(shape=10, dtype=d2), eq=False)],
     )
     assert diff(a, b, record_min_ratio=0.79) == Diff(
         ratio=1,
         diffs=[Chunk(
-            data_a=np.zeros(shape=10, dtype=d_common),
-            data_b=np.zeros(shape=10, dtype=d_common),
+            data_a=np.zeros(shape=10, dtype=d1),
+            data_b=np.zeros(shape=10, dtype=d2),
             eq=True,
-            details=[array('i', [1, 0, 1, 1, 0, 1])] * 10,
+            details=[array('i', [1, 1, 1, 1])] * 10,
         )],
     )
 
@@ -682,8 +649,6 @@ def test_diff_record_2(monkeypatch):
     d1 = np.dtype([("ix", i8), ("name", s32), ("val", f8)])
     d2 = np.dtype([("ix", i8), ("name", s32), ("val_2", f8)])
 
-    d_common = np.dtype([("field0", i8), ("field1", s32), ("field2", f8)])
-
     a = np.rec.fromarrays([
         np.array([0, 1, 2, 3, 4, 5], dtype=i8),
         np.array([b"alpha", b"beta", b"gamma", b"delta", b"epsilon", b"zeta"], dtype=s32),
@@ -695,15 +660,12 @@ def test_diff_record_2(monkeypatch):
         np.array([10.8, 34.6, 10, 1.1, 7.7, 11.9], dtype=f8)
     ], dtype=d2)
 
-    a_aligned = a.astype(d_common)
-    b_aligned = b.astype(d_common)
-
     assert diff(a, b, min_ratio=0.6, atol=0.2, record_compare_names=False, record_compare_data=True) == Diff(
         ratio=2./3,
         diffs=[
-            Chunk(data_a=a_aligned[:1], data_b=b_aligned[:1], eq=False),
-            Chunk(data_a=a_aligned[1:2], data_b=b_aligned[1:2], eq=True, details=[array('i', [1, 1, 1])]),
-            Chunk(data_a=a_aligned[2:3], data_b=b_aligned[2:3], eq=False),
-            Chunk(data_a=a_aligned[3:], data_b=b_aligned[3:], eq=True, details=[array('i', [1, 1, 1])] * 3),
+            Chunk(data_a=a[:1], data_b=b[:1], eq=False),
+            Chunk(data_a=a[1:2], data_b=b[1:2], eq=True, details=[array('i', [1, 1, 1])]),
+            Chunk(data_a=a[2:3], data_b=b[2:3], eq=False),
+            Chunk(data_a=a[3:], data_b=b[3:], eq=True, details=[array('i', [1, 1, 1])] * 3),
         ],
     )

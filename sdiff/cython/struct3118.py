@@ -1,9 +1,11 @@
 """
 A very naive implementation of parsing type formats from PEP-3118.
 """
-from dataclasses import dataclass
-from typing import Union, Optional
+from dataclasses import dataclass, replace
+from functools import cached_property
+from typing import Union, Optional, Mapping
 from hashlib import sha1
+from types import MappingProxyType
 
 import pyparsing as pp
 
@@ -37,6 +39,10 @@ class Type:
     def get_fingerprint(self) -> str:
         return sha1(self.format().encode("utf-8")).hexdigest()
 
+    @cached_property
+    def anonymous(self) -> "StructType":
+        return self
+
 
 @dataclass(frozen=True)
 class AtomicType(Type):
@@ -47,7 +53,7 @@ class AtomicType(Type):
     def format(self) -> str:
         return f"{self.byte_order if self.byte_order != '@' else ''}{'Z' if self.z else ''}{self.typecode}"
 
-    @property
+    @cached_property
     def c(self) -> str:
         if self.z:
             raise ValueError("complex values not supported")
@@ -72,6 +78,10 @@ class StructField:
             shape = "(" + ','.join(map(str, self.shape)) + ")"
         return f"{shape}{self.type.format()}{':' + self.caption + ':' if self.caption is not None else ''}"
 
+    @cached_property
+    def anonymous(self) -> "StructField":
+        return replace(self, type=self.type.anonymous, caption=None)
+
 
 @dataclass(frozen=True)
 class StructType(Type):
@@ -79,6 +89,19 @@ class StructType(Type):
 
     def format(self) -> str:
         return "T{" + ''.join(i.format() for i in self.fields) + "}"
+
+    @cached_property
+    def fields_by_name(self) -> Mapping[str, StructField]:
+        result = {}
+        for field in self.fields:
+            if field.caption in result:
+                raise ValueError("duplicate field names in struct")
+            result[field.caption] = field
+        return MappingProxyType(result)
+
+    @cached_property
+    def anonymous(self) -> "StructType":
+        return StructType(fields=tuple(f.anonymous for f in self.fields))
 
 
 p_typecode = pp.Char("xbB?hHiIlLqQnNefdspPuwOgG")

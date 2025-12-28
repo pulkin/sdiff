@@ -134,6 +134,13 @@ def test_buffer_protocol_np(dtype):
     assert comparison_backend(0, 0) is False
     assert comparison_backend(2, 0) is True
 
+@pytest.mark.parametrize("t1, t2", [(np.int8, np.float64), (np.float64, np.object_), (np.object_, np.int8)])
+def test_buffer_protocol_cross(t1, t2):
+    comparison_backend = wrap((np.array([0, 1, 2], dtype=t1), np.array([2, 3], dtype=t2)))
+
+    assert comparison_backend(0, 0) is False
+    assert comparison_backend(2, 0) is True
+
 
 def test_np_record():
     dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
@@ -177,20 +184,20 @@ def test_np_record_atol():
     assert comparison_backend.resolve(1, 2) == array('i', [1, 1, 0])
 
 
-def test_np_record_mask():
-    dtype = np.dtype([("ix", "i8"), ("range", "f", 2), ("name", "S5")])
-    a = np.array([(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")], dtype=dtype)
-    comparison_backend = wrap((a, a), struct_mask=[False, True, True], struct_threshold=1)
+def test_np_record_map():
+    t1 = np.dtype([("ix", "i8"), ("val", "f8", 2)])
+    t2 = np.dtype([("val2", "f8", 2), ("ix2", "i8")])
+    a = np.array([(0, (0., 1.)), (1, (2., 3.))], dtype=t1)
+    b = np.array([((0., 1.), 0), ((2., 3.), 2)], dtype=t2)
+    comparison_backend = wrap((a, b), struct_field_map=[("ix", "ix2"), ("val", "val2")])
 
     assert comparison_backend(0, 0) is True
+    assert comparison_backend(1, 1) is False
     assert comparison_backend(0, 1) is False
-    assert comparison_backend(0, 2) is True
-    assert comparison_backend(1, 2) is False
 
-    assert comparison_backend.resolve(0, 0) == array('i', [0, 1, 1])
-    assert comparison_backend.resolve(0, 1) == array('i', [0, 0, 0])
-    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
-    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1])
+    assert comparison_backend.resolve(1, 1) == array('i', [0, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [0, 0])
 
 
 @pytest.mark.xfail(reason="https://github.com/cython/cython/issues/7191")
@@ -260,3 +267,33 @@ def test_np_record_nested_3():
     assert comparison_backend.resolve(0, 0) == array('i', [1])
     assert comparison_backend.resolve(1, 1) == array('i', [1])
     assert comparison_backend.resolve(0, 1) == array('i', [1])
+
+
+def test_np_record_cross():
+    t1 = np.dtype([("ix", "i8"), ("range", "f8", 2), ("name", "S5")])
+    t2 = np.dtype([("ix", "f4"), ("range", "f4", 2), ("name", "S5")])
+    data = [(0, (0., 1.), b"a"), (0, (0.1, 1.), b"bb"), (1, (0., 1.), b"ccc")]
+    a = np.array(data, dtype=t1)
+    b = np.array(data, dtype=t2)
+
+    comparison_backend = wrap((a, b))
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is False
+    assert comparison_backend(0, 2) is False
+    assert comparison_backend(1, 2) is False
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
+
+    comparison_backend = wrap((a, a), struct_threshold=1)
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is True
+    assert comparison_backend(0, 2) is True
+    assert comparison_backend(1, 2) is False
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1, 1, 1])
+    assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
+    assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
+    assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])

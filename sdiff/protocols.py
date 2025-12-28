@@ -1,5 +1,6 @@
 from typing import Optional, Callable, Any
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from dataclasses import dataclass
 
 from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
@@ -163,6 +164,46 @@ def wrap_str(a: str, b: str, **kwargs) -> ComparisonBackend:
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
+@dataclass(frozen=True)
+class _CompareSpec:
+    left: StructType
+    right: StructType
+    field_map: tuple[tuple[str, str], ...]
+
+    def __post_init__(self):
+        errors = []
+        if delta_a := ({i for i, _ in self.field_map} - set(self.left.fields_by_name)):
+            errors.append(f"missing fields {', '.join(map(str, delta_a))} in the first data type")
+        if delta_b := ({j for _, j in self.field_map} - set(self.right.fields_by_name)):
+            errors.append(f"missing fields {', '.join(map(str, delta_b))} in the second data type")
+        if errors:
+            raise ValueError("; ".join(errors))
+
+    @classmethod
+    def from_pair(cls, left: StructType, right: StructType) -> "_CompareSpec":
+        if (n := len(left.fields)) != (m := len(right.fields)):
+            raise ValueError(f"structs have different field count: {n} != {m}")
+        field_map = tuple(
+            (fa.caption, fb.caption)
+            for fa, fb in zip(left.fields, right.fields)
+        )
+        return _CompareSpec(left, right, field_map)
+
+    def walk(self, _visited: Optional[set["_CompareSpec"]] = None) -> Generator["_CompareSpec", None, None]:
+        if _visited is None:
+            _visited = set()
+        if self in _visited:
+            return
+        yield self
+
+        _visited.add(self)
+        for left_field, right_field in self.field_map:
+            left_type = self.left.fields_by_name[left_field].type
+            right_type = self.right.fields_by_name[right_field].type
+            if isinstance(left_type, StructType) and isinstance(right_type, StructType):
+                yield from _CompareSpec.from_pair(left_type, right_type).walk(_visited=_visited)
+
+
 class _MVCodeGen:
     """A class for cython code generation for memoryviews"""
     def __init__(self, atol: Optional[float] = None):
@@ -177,41 +218,58 @@ class _MVCodeGen:
         else:
             raise NotImplementedError(f"unknown type: {t}")
 
-    def get_struct_cdef(self, t: StructType, name: str) -> list[str]:
+    def get_struct_compare_def_name(self, left_t: StructType, right_t: StructType, prefix: str = "compare") -> str:
+        """A naming convention for structure comparison"""
+        return f"{prefix}_{self.get_type_c_name(left_t)}_{self.get_type_c_name(right_t)}"
+
+    def get_struct_cdef(self, t: StructType) -> list[str]:
         """Prepares a cdef section for the provided struct type"""
-        code = [f"cdef packed struct {name}:"]
-        for i, field in enumerate(t.fields):
+        code = [f"cdef packed struct {self.get_type_c_name(t)}:"]
+        for field in t.fields:
             if field.shape is None:
                 postfix = ""
             elif isinstance(field.shape, int):
                 postfix = f"[{field.shape}]"
             else:
                 postfix = f"[{']['.join(map(str, field.shape))}]"
-            code.append(f"  const {self.get_type_c_name(field.type)} f{i}{postfix}")
+            code.append(f"  const {self.get_type_c_name(field.type)} {field.caption}{postfix}")
         return code
 
-    def get_type_compare_expr(self, left: str, right: str, t: Type) -> str:
+    def get_type_compare_expr(self, left: str, left_t: Type, right: str, right_t: Type) -> str:
         """Prepares a comparison expression for the provided type"""
-        if isinstance(t, AtomicType):
-            if self.atol is not None and t.typecode != 's':
+        if isinstance(left_t, AtomicType) and isinstance(right_t, AtomicType):
+            if self.atol is not None and left_t.typecode != 's' and right_t.typecode != 's':
                 return  f"({left} - {right}) >= -atol and ({left} - {right}) <= atol"
+            elif left_t.typecode == 's' != right_t.typecode == 's':  # prevent string-number comparison
+                raise ValueError("attempt to compare strings and numbers")
             else:
                 return f"{left} == {right}"
-        elif isinstance(t, StructType):
+
+        elif isinstance(left_t, StructType) and isinstance(right_t, StructType):
             fields = [left, right]
             if self.atol is not None:
                 fields.append("atol")
-            return f"compare_{self.get_type_c_name(t)}({', '.join(fields)})"
+            return f"{self.get_struct_compare_def_name(left_t, right_t)}({', '.join(fields)})"
         else:
-            raise ValueError(f"unknown type: {t}")
+            raise ValueError(f"unknown or incompatible types: {left_t}, {right_t}")
 
-    def get_struct_field_comparison(self, field: StructField, left: str, right: str, result_statement: str, indent="") -> list[str]:
-        if field.shape is None:
-            return [f"{indent}{result_statement.format(expr=self.get_type_compare_expr(f'{left}', f'{right}', field.type))}"]
-        elif isinstance(field.shape, int):
-            shape = (field.shape,)
-        else:
-            shape = field.shape
+    def get_struct_field_comparison(
+            self,
+            left: str,
+            left_field: StructField,
+            right: str,
+            right_field: StructField,
+            result_statement: str,
+            indent="",
+    ) -> list[str]:
+        if left_field.shape != right_field.shape:
+            raise ValueError(f"cannot compare fields with differing shapes: {left_field} vs {right_field}")
+        shape = left_field.shape
+
+        if shape is None:
+            return [f"{indent}{result_statement.format(expr=self.get_type_compare_expr(left, left_field.type, right, right_field.type))}"]
+        elif isinstance(shape, int):
+            shape = (shape,)
 
         code = []
 
@@ -222,7 +280,7 @@ class _MVCodeGen:
             subscript += f"[i{i}]"
 
         code.extend([
-            f"{indent}if not ({self.get_type_compare_expr(f'{left}{subscript}', f'{right}{subscript}', field.type)}):",
+            f"{indent}if not ({self.get_type_compare_expr(f'{left}{subscript}', left_field.type, f'{right}{subscript}', right_field.type)}):",
             f"{indent}  break",
         ])
 
@@ -241,68 +299,76 @@ class _MVCodeGen:
                 ])
         return code
 
-    def get_struct_code(
+    def get_struct_compare_code(
             self,
-            t: StructType,
-            mask: Optional[Sequence[bool]] = None,
+            left_t: StructType,
+            right_t: StructType,
+            field_map: Sequence[tuple[str, str]],
             threshold: bool = False,
-            _structs_declared: Optional[set[Type]] = None,
     ) -> list[str]:
         """Declares a struct type and adds a comparison for it"""
-        if not _structs_declared:
-            _structs_declared = set()
-        name = self.get_type_c_name(t)
-        _structs_declared.add(t)
+        left_n = self.get_type_c_name(left_t)
+        right_n = self.get_type_c_name(right_t)
         code = []
-        for field in t.fields:
-            if isinstance(field.type, StructType) and field.type not in _structs_declared:
-                code.extend(self.get_struct_code(field.type, _structs_declared=_structs_declared))
-        code.extend(self.get_struct_cdef(t, name))
 
-        args = f"const {name} a, const {name} b"
+        args = f"const {left_n} a, const {right_n} b"
         if threshold:
             args += ", const long threshold"
         if self.atol is not None:
             args += ", const double atol"
 
         code.extend([
-            f"cdef int compare_{name}({args}):",
+            f"cdef int {self.get_struct_compare_def_name(left_t, right_t)}({args}):",
             f"  cdef int result = 0",
         ])
-        for _i, field in enumerate(t.fields):
-            if mask is None or mask[_i]:
-                code.extend(self.get_struct_field_comparison(field, f"a.f{_i}", f"b.f{_i}", "result += {expr}", indent="  "))
-        code.append(f"  return result >= {'threshold' if threshold else _i + 1}")
+        for left_f, right_f in field_map:
+            code.extend(self.get_struct_field_comparison(
+                f"a.{left_f}",
+                left_t.fields_by_name[left_f],
+                f"b.{right_f}",
+                right_t.fields_by_name[right_f],
+                "result += {expr}",
+                indent="  ",
+            ))
+        code.append(f"  return result >= {'threshold' if threshold else len(field_map)}")
         return code
 
     def get_resolve_code(
             self,
-            t: StructType,
-            mask: Optional[Sequence[bool]] = None,
+            left_t: StructType,
+            right_t: StructType,
+            field_map: Sequence[tuple[str, str]],
     ) -> list[str]:
-        name = self.get_type_c_name(t)
+        left_n = self.get_type_c_name(left_t)
+        right_n = self.get_type_c_name(right_t)
         code = []
 
-        args = f"const {name} a, const {name} b"
+        args = f"const {left_n} a, const {right_n} b"
         if self.atol is not None:
             args += ", const double atol"
 
         code.extend([
             f"@cython.wraparound(False)",
             f"@cython.boundscheck(False)",
-            f"cdef resolve_{name}({args}):",
-            f"  cdef array.array result = array.clone(_int_array_template, {len(t.fields)}, zero=True)",
+            f"cdef {self.get_struct_compare_def_name(left_t, right_t, 'resolve')}({args}):",
+            f"  cdef array.array result = array.clone(_int_array_template, {len(field_map)}, zero=True)",
             f"  cdef int[:] result_view = result"
         ])
-        for _i, field in enumerate(t.fields):
-            if mask is None or mask[_i]:
-                code.extend(self.get_struct_field_comparison(field, f"a.f{_i}", f"b.f{_i}", f"result_view[{_i}] = {{expr}}", indent="  "))
+        for i, (left_f, right_f) in enumerate(field_map):
+            code.extend(self.get_struct_field_comparison(
+                f"a.{left_f}",
+                left_t.fields_by_name[left_f],
+                f"b.{right_f}",
+                right_t.fields_by_name[right_f],
+                f"result_view[{i}] = {{expr}}",
+                indent="  ",
+            ))
         code.append(f"  return result")
         return code
 
 
 def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, struct_threshold: Optional[int] = None,
-                    struct_mask: Optional[Sequence[bool]] = None, **kwargs):
+                    struct_field_map: Optional[Sequence[tuple[str, str]]] = None, **kwargs):
     """
     Wraps a pair of memory views into a comparison protocol.
 
@@ -322,10 +388,11 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         For arrays of struct data types (e.g. numpy record arrays) specifies
         the minimal number of fields to be equal for the whole struct to be
         considered equal.
-    struct_mask
-        For arrays of struct data types (e.g. numpy record arrays) specifies
-        a mask including/removing individual fields into/from comparison.
-        Masks for inner (nested) struct data types are not supported.
+    struct_field_map
+        For arrays of struct data types (e.g. numpy record arrays) accepts
+        a map indicating which pairs of fields have to be compared. Each element
+        is a pair of field names in the two structures. There is currently no
+        way to specify the map for inner (nested) structures.
     kwargs
         Build arguments.
 
@@ -341,30 +408,37 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
     struct_a = parse_3118(a.format)
     struct_b = parse_3118(b.format)
 
-    if struct_a != struct_b:
+    if isinstance(struct_a, StructType) and isinstance(struct_b, StructType):
+        structs = True
+    elif isinstance(struct_a, AtomicType) and isinstance(struct_b, AtomicType):
+        structs = False
+    else:
         raise ValueError(f"item data types do not match: {struct_a} != {struct_b}")
 
     source_code = list(IMPORT)
+    fields = []
     init_args = {"a": a, "b": b}
     codegen = _MVCodeGen(atol=atol)
 
-    if isinstance(struct_a, AtomicType) and struct_a.typecode == "O":
-        dtype_str = "object"
-        fields = [
-            (f"{dtype_str}[:]", "a"),
-            (f"{dtype_str}[:]", "b"),
-        ]
-    else:
-        dtype_str = codegen.get_type_c_name(struct_a)
-        fields = [
-            (f"const {dtype_str}[:]", "a"),
-            (f"const {dtype_str}[:]", "b"),
-        ]
-        if isinstance(struct_a, StructType):
-            source_code.extend(codegen.get_struct_code(struct_a, mask=struct_mask, threshold=True))
-            source_code.extend(codegen.get_resolve_code(struct_a, mask=struct_mask))
+    for side, name in zip((struct_a, struct_b), "ab"):
+        if isinstance(side, AtomicType) and side.typecode == "O":
+            fields.append((f"object[:]", name))
+        else:
+            fields.append((f"const {codegen.get_type_c_name(side)}[:]", name))
+
+    if structs:
+        root_comparison = _CompareSpec.from_pair(struct_a, struct_b) if struct_field_map is None else _CompareSpec(struct_a, struct_b, tuple(struct_field_map))
+        structs_declared = set()
+        for comparison in list(root_comparison.walk())[::-1]:
+            for side in comparison.left, comparison.right:
+                if side not in structs_declared:
+                    source_code.extend(codegen.get_struct_cdef(side))
+                    structs_declared.add(side)
+            source_code.extend(codegen.get_struct_compare_code(comparison.left, comparison.right, comparison.field_map, threshold=struct_threshold is not None and comparison is root_comparison))
+        source_code.extend(codegen.get_resolve_code(root_comparison.left, root_comparison.right, root_comparison.field_map))
+        if struct_threshold is not None:
             fields.append((f"long", "threshold"))
-            init_args["threshold"] = struct_threshold if struct_threshold is not None else len(struct_a.fields)
+            init_args["threshold"] = struct_threshold
 
     if atol is not None:
         fields.append(("double", "atol"))
@@ -375,24 +449,27 @@ def wrap_memoryview(a: memoryview, b: memoryview, atol: Optional[float] = None, 
         *COMPARE_DEF,
     ])
 
-    if isinstance(struct_a, AtomicType):
+    if not structs:
         source_code.extend(COMPARE_ABS if atol is not None else COMPARE_SIMPLE)
-    elif isinstance(struct_a, StructType):
+    else:
+        _args = ""
+        if struct_threshold is not None:
+            _args += ", self.threshold"
+        if atol is not None:
+            _args += ", self.atol"
+        source_code.append(f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b)}(self.a[i], self.b[j]{_args})")
         _args = ""
         if atol is not None:
             _args += ", self.atol"
-        source_code.append(f"    return compare_{dtype_str}(self.a[i], self.b[j], self.threshold{_args})")
         source_code.extend([
             *RESOLVE_DEF,
-            f"    return resolve_{dtype_str}(self.a[i], self.b[j]{_args})",
+            f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b, 'resolve')}(self.a[i], self.b[j]{_args})",
         ])
-    else:
-        raise ValueError(f"unknown type: {struct_a}")
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
 
 
 def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_threshold: Optional[int] = None,
-         struct_mask: Optional[Sequence[bool]] = None, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
+         struct_field_map: Optional[Sequence[tuple[str, str]]] = None, resolver: Optional[Callable[[int, int], Any]] = None, **kwargs):
     """
     Assembles the compare protocol from the provided argument.
 
@@ -412,10 +489,11 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_th
         For arrays of struct data types (e.g. numpy record arrays) specifies
         the minimal number of fields to be equal for the whole struct to be
         considered equal.
-    struct_mask
-        For arrays of struct data types (e.g. numpy record arrays) specifies
-        a mask including/removing individual fields into/from comparison.
-        Masks for inner (nested) struct data types are not supported.
+    struct_field_map
+        For arrays of struct data types (e.g. numpy record arrays) accepts
+        a map indicating which pairs of fields have to be compared. Each element
+        is a pair of field names in the two structures. There is currently no
+        way to specify the map for inner (nested) structures.
     resolver
         An optional callable(i, j) comparing two elements in details.
         This callable will be used to populate the "details" field
@@ -444,8 +522,8 @@ def wrap(arg, allow_python: bool = True, atol: Optional[float] = None, struct_th
                 except TypeError:
                     pass  # fallback to python comparison
                 else:
-                    return wrap_memoryview(a=mem_a, b=mem_b, atol=atol, struct_mask=struct_mask,
-                                           struct_threshold=struct_threshold, **kwargs)
+                    return wrap_memoryview(a=mem_a, b=mem_b, atol=atol, struct_threshold=struct_threshold,
+                                           struct_field_map=struct_field_map, **kwargs)
         if not allow_python:
             raise ValueError(f"failed to pick a type-aware protocol (failed to convert to memoryview or data type mismatch)")
         return wrap_python_pair(a=a, b=b, atol=atol, **kwargs)
