@@ -297,3 +297,17 @@ def test_np_record_cross():
     assert comparison_backend.resolve(0, 1) == array('i', [1, 0, 0])
     assert comparison_backend.resolve(0, 2) == array('i', [0, 1, 0])
     assert comparison_backend.resolve(1, 2) == array('i', [0, 0, 0])
+
+
+def test_np_record_names():
+    t = np.dtype([("✓{", "i8"), ("✗}", "i8")])
+    a = np.array([(0, 3), (1, 4), (0, 5)], dtype=t)
+
+    comparison_backend = wrap((a, a), struct_field_map=[("✓{", "✓{")])
+    assert comparison_backend(0, 0) is True
+    assert comparison_backend(0, 1) is False
+    assert comparison_backend(0, 2) is True
+
+    assert comparison_backend.resolve(0, 0) == array('i', [1])
+    assert comparison_backend.resolve(0, 1) == array('i', [0])
+    assert comparison_backend.resolve(0, 2) == array('i', [1])

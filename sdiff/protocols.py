@@ -198,8 +198,8 @@ class _CompareSpec:
 
         _visited.add(self)
         for left_field, right_field in self.field_map:
-            left_type = self.left.fields_by_name[left_field].type
-            right_type = self.right.fields_by_name[right_field].type
+            left_type = self.left.fields[self.left.fields_by_name[left_field]].type
+            right_type = self.right.fields[self.right.fields_by_name[right_field]].type
             if isinstance(left_type, StructType) and isinstance(right_type, StructType):
                 yield from _CompareSpec.from_pair(left_type, right_type).walk(_visited=_visited)
 
@@ -225,14 +225,14 @@ class _MVCodeGen:
     def get_struct_cdef(self, t: StructType) -> list[str]:
         """Prepares a cdef section for the provided struct type"""
         code = [f"cdef packed struct {self.get_type_c_name(t)}:"]
-        for field in t.fields:
+        for i, field in enumerate(t.fields):
             if field.shape is None:
                 postfix = ""
             elif isinstance(field.shape, int):
                 postfix = f"[{field.shape}]"
             else:
                 postfix = f"[{']['.join(map(str, field.shape))}]"
-            code.append(f"  const {self.get_type_c_name(field.type)} {field.caption}{postfix}")
+            code.append(f"  const {self.get_type_c_name(field.type)} field{i}{postfix}")
         return code
 
     def get_type_compare_expr(self, left: str, left_t: Type, right: str, right_t: Type) -> str:
@@ -321,12 +321,16 @@ class _MVCodeGen:
             f"cdef int {self.get_struct_compare_def_name(left_t, right_t)}({args}):",
             f"  cdef int result = 0",
         ])
-        for left_f, right_f in field_map:
+        for left_name, right_name in field_map:
+            left_ix = left_t.fields_by_name[left_name]
+            right_ix = right_t.fields_by_name[right_name]
+            left_field = left_t.fields[left_ix]
+            right_field = right_t.fields[right_ix]
             code.extend(self.get_struct_field_comparison(
-                f"a.{left_f}",
-                left_t.fields_by_name[left_f],
-                f"b.{right_f}",
-                right_t.fields_by_name[right_f],
+                f"a.field{left_ix}",
+                left_field,
+                f"b.field{right_ix}",
+                right_field,
                 "result += {expr}",
                 indent="  ",
             ))
@@ -354,12 +358,16 @@ class _MVCodeGen:
             f"  cdef array.array result = array.clone(_int_array_template, {len(field_map)}, zero=True)",
             f"  cdef int[:] result_view = result"
         ])
-        for i, (left_f, right_f) in enumerate(field_map):
+        for i, (left_name, right_name) in enumerate(field_map):
+            left_ix = left_t.fields_by_name[left_name]
+            right_ix = right_t.fields_by_name[right_name]
+            left_field = left_t.fields[left_ix]
+            right_field = right_t.fields[right_ix]
             code.extend(self.get_struct_field_comparison(
-                f"a.{left_f}",
-                left_t.fields_by_name[left_f],
-                f"b.{right_f}",
-                right_t.fields_by_name[right_f],
+                f"a.field{left_ix}",
+                left_field,
+                f"b.field{right_ix}",
+                right_field,
                 f"result_view[{i}] = {{expr}}",
                 indent="  ",
             ))
