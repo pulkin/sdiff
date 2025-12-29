@@ -300,10 +300,11 @@ def test_np_record_cross():
 
 
 def test_np_record_names():
-    t = np.dtype([("✓{", "i8"), ("✗}", "i8")])
+    weird = "✓{ v"
+    t = np.dtype([(weird, "i8"), ("✗}", "i8")])
     a = np.array([(0, 3), (1, 4), (0, 5)], dtype=t)
 
-    comparison_backend = wrap((a, a), struct_field_map=[("✓{", "✓{")])
+    comparison_backend = wrap((a, a), struct_field_map=[(weird, weird)])
     assert comparison_backend(0, 0) is True
     assert comparison_backend(0, 1) is False
     assert comparison_backend(0, 2) is True
