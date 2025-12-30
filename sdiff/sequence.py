@@ -1,7 +1,8 @@
 from collections.abc import Sequence, MutableSequence, Generator
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from array import array
 from itertools import groupby
+from functools import partial
 
 from .chunk import Diff, Chunk
 from .myers import search_graph_recursive as pymyers, MAX_COST, MAX_CALLS, MIN_RATIO
@@ -168,9 +169,10 @@ def diff(
         return Diff(
             ratio=ratio,
             diffs=list(codes_to_chunks(a, b, codes, dig=backend.resolve)),
+            protocol=backend,
         )
     else:
-        return Diff(ratio=ratio, diffs=None)
+        return Diff(ratio=ratio, diffs=None, protocol=backend)
 
 
 def canonize(codes: MutableSequence[int]):
@@ -261,6 +263,18 @@ def _pop_optional(seq):
         return seq[0], seq[1:] if len(seq) > 1 else seq
     else:
         return seq, seq
+
+
+def _intermediate(
+        i: int,
+        j: int,
+        a: Sequence[Any],
+        b: Sequence[Any],
+        a_: Sequence[Any],
+        b_: Sequence[Any],
+        **kwargs
+) -> Diff:
+    return diff_nested(a=a[i], b=b[j], eq=(a_[i], b_[j]), **kwargs)
 
 
 def diff_nested(
@@ -381,46 +395,47 @@ def diff_nested(
                 raise ValueError("encountered recursive nesting of inputs")
             _blacklist_a = {*_blacklist_a, id(a_)}
             _blacklist_b = {*_blacklist_b, id(b_)}
+            _eq = partial(
+                _intermediate,
+                a=a,
+                b=b,
+                a_=a_,
+                b_=b_,
+                atol=atol,
+                struct_threshold=struct_threshold,
+                struct_field_map=struct_field_map,
+                min_ratio=min_ratio_pass,
+                max_cost=max_cost_pass,
+                max_calls=max_calls_pass,
+                eq_only=True,
+                kernel=kernel,
+                nested_containers=nested_containers,
+                max_depth=max_depth - 1,
+                _blacklist_a=_blacklist_a,
+                _blacklist_b=_blacklist_b,
+            )
 
-            def _eq(i: int, j: int):
-                return diff_nested(
-                    a=a[i],
-                    b=b[j],
-                    eq=(a_[i], b_[j]),
+            if rtn_diff and not isinstance(rtn_diff, array):
+                _dig = partial(
+                    _intermediate,
+                    a=a,
+                    b=b,
+                    a_=a_,
+                    b_=b_,
                     atol=atol,
                     struct_threshold=struct_threshold,
                     struct_field_map=struct_field_map,
                     min_ratio=min_ratio_pass,
                     max_cost=max_cost_pass,
                     max_calls=max_calls_pass,
-                    eq_only=True,
+                    eq_only=False,
                     kernel=kernel,
+                    rtn_diff=rtn_diff,
                     nested_containers=nested_containers,
                     max_depth=max_depth - 1,
                     _blacklist_a=_blacklist_a,
                     _blacklist_b=_blacklist_b,
                 )
-
-            if rtn_diff and not isinstance(rtn_diff, array):
-                def _dig(i: int, j: int):
-                    return diff_nested(
-                        a=a[i],
-                        b=b[j],
-                        eq=(a_[i], b_[j]),
-                        atol=atol,
-                        struct_threshold=struct_threshold,
-                        struct_field_map=struct_field_map,
-                        min_ratio=min_ratio_pass,
-                        max_cost=max_cost_pass,
-                        max_calls=max_calls_pass,
-                        eq_only=False,
-                        kernel=kernel,
-                        rtn_diff=rtn_diff,
-                        nested_containers=nested_containers,
-                        max_depth=max_depth - 1,
-                        _blacklist_a=_blacklist_a,
-                        _blacklist_b=_blacklist_b,
-                    )
             else:
                 _dig = None
 

@@ -4,7 +4,9 @@ from typing import Any, Optional, Union
 from collections.abc import Callable, Iterable, Sequence, Generator
 from functools import reduce, cached_property
 from operator import add
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from .cython.compare import ComparisonBackend
 
 
 @dataclass(frozen=True)
@@ -340,6 +342,7 @@ class Diff:
     """
     ratio: float
     diffs: Optional[list[Chunk]]
+    protocol: Optional[ComparisonBackend] = field(default=None, repr=False, hash=False, compare=False)
 
     @classmethod
     def from_signature(cls, sig: Signature, data_a, data_b) -> "Diff":
