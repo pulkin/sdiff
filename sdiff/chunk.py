@@ -167,7 +167,7 @@ class Chunk:
         )
 
 
-def iter_chunks_compressed(chunks: Iterable[Chunk]) -> Generator[Chunk, None, None]:
+def iter_chunks_compressed(diff: "Diff") -> Generator[Chunk, None, None]:
     """
     Iterates through compressed chunks of differences.
 
@@ -176,27 +176,27 @@ def iter_chunks_compressed(chunks: Iterable[Chunk]) -> Generator[Chunk, None, No
 
     Parameters
     ----------
-    chunks
-        Input chunks.
+    diff
+        Input diff.
 
     Yields
     ------
     Each yielded value is a combined group of differences compressed into
     a single `Chunk` object.
     """
-    for key, group in itertools.groupby(chunks, key=lambda i: i.eq):
+    for key, group in itertools.groupby(diff.diffs, key=lambda i: i.eq):
         yield reduce(add, group)
 
 
-def iter_chunks_coarse(chunks: Iterable[Chunk], consume_size: int) -> Generator[Chunk, None, None]:
+def iter_chunks_coarse(diff: "Diff", consume_size: int) -> Generator[Chunk, None, None]:
     """
     Iterates over chunks of differences and merges smaller equal chunks into
     bigger non-equal ones.
 
     Parameters
     ----------
-    chunks
-        Input chunks.
+    diff
+        Input diff.
 
     consume_size : int
         The threshold size below which equal chunks are merged into non-equal ones.
@@ -206,7 +206,7 @@ def iter_chunks_coarse(chunks: Iterable[Chunk], consume_size: int) -> Generator[
     A generator yielding bigger `Chunk` objects.
     """
     buffer = []
-    for chunk in iter_chunks_compressed(chunks):
+    for chunk in iter_chunks_compressed(diff):
         if chunk.eq and len(chunk.data_a) > consume_size:
             if buffer:
                 yield reduce(add, buffer)
@@ -480,7 +480,7 @@ class Diff:
         -------
         The resulting diff.
         """
-        return Diff(ratio=self.ratio, diffs=list(iter_chunks_coarse(self.diffs, consume_size)))
+        return Diff(ratio=self.ratio, diffs=list(iter_chunks_coarse(self, consume_size)))
 
 
 @dataclass(frozen=True)
