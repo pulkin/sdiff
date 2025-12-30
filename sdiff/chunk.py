@@ -219,16 +219,16 @@ def iter_chunks_coarse(chunks: Iterable[Chunk], consume_size: int) -> Generator[
         yield reduce(add, buffer)
 
 
-def iter_chunks_verbose(chunks: Iterable[Chunk]) -> Generator[tuple[bool, bool, Chunk], None, None]:
+def iter_chunks_verbose(diff: "Diff") -> Generator[tuple[bool, bool, Chunk], None, None]:
     """
-    Iterates over chunks and yields them together with two booleans: "equal" and "exact".
+    Iterates over diff chunks and yields them together with two booleans: "equal" and "exact".
     The "equal" boolean has the same meaning as `Chunk.eq`: it tells whether the sub-sequences are aligned.
     The "exact" boolean tells whether an "equal" (aligned) Chunk is equal "exactly" or "approximately".
 
     Parameters
     ----------
-    chunks
-        Input chunks.
+    diff
+        Input diff.
 
     Yields
     ------
@@ -239,7 +239,7 @@ def iter_chunks_verbose(chunks: Iterable[Chunk]) -> Generator[tuple[bool, bool, 
             return _sub_diff.ratio == 1
         return _sub_diff.all()  # TODO: remove array work-around
 
-    for chunk in chunks:
+    for chunk in diff.diffs:
         if not chunk.eq:
             yield chunk.eq, False, chunk
         elif chunk.details is None:
@@ -253,14 +253,14 @@ def iter_chunks_verbose(chunks: Iterable[Chunk]) -> Generator[tuple[bool, bool, 
                 i = j
 
 
-def iter_chunks_important(chunks: Iterable[Chunk], context_size: int = 0) -> Generator[Union["Item", int], None, None]:
+def iter_chunks_important(diff: "Diff", context_size: int = 0) -> Generator[Union["Item", int], None, None]:
     """
     Iterates over non-equal item pairs.
 
     Parameters
     ----------
-    chunks
-        Input chunks.
+    diff
+        Input diff.
     context_size
         The number of equal pairs to provide the context
         while yielding non-equal pairs.
@@ -296,7 +296,7 @@ def iter_chunks_important(chunks: Iterable[Chunk], context_size: int = 0) -> Gen
     context_tail = _dummy()
     counter_a = counter_b = 0
 
-    for i_chunk, (is_eq, is_exact, chunk) in enumerate(iter_chunks_verbose(chunks)):
+    for i_chunk, (is_eq, is_exact, chunk) in enumerate(iter_chunks_verbose(diff)):
 
         if is_eq:
             if not is_exact:

@@ -36,7 +36,8 @@ def test_important():
         Chunk(data_a=[[9, 10, 11]], data_b=[[19, 20, 21]], eq=False),
         Chunk(data_a=[[12, 13, 14], [15, 16, 17]], data_b=[[12, 13, 14], [15, 16, 17]], eq=True),
     ]
-    assert list(iter_chunks_important(chunks)) == [
+    diff = Diff(ratio=0, diffs=chunks)
+    assert list(iter_chunks_important(diff)) == [
         1,
         Item(a=[3, 4, 5], b=[3, 9, 5], ix_a=1, ix_b=1, diff=diff_345),
         1,
@@ -44,7 +45,7 @@ def test_important():
         Item(a=None, b=[19, 20, 21], ix_a=None, ix_b=3),
         2,
     ]
-    assert list(iter_chunks_important(chunks, context_size=1)) == [
+    assert list(iter_chunks_important(diff, context_size=1)) == [
         Item(a=[0, 1, 2], b=[0, 1, 2], ix_a=0, ix_b=0),
         Item(a=[3, 4, 5], b=[3, 9, 5], ix_a=1, ix_b=1, diff=diff_345),
         Item(a=[6, 7, 8], b=[6, 7, 8], ix_a=2, ix_b=2),

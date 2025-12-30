@@ -724,7 +724,7 @@ class TextPrinter(AbstractTextPrinter):
 
         separator = False
         p(self.text_formats.textwrap_start)
-        for is_skip, group in groupby(iter_chunks_important(diff.data.diffs, context_size=self.context_size), lambda i: isinstance(i, int)):
+        for is_skip, group in groupby(iter_chunks_important(diff.data, context_size=self.context_size), lambda i: isinstance(i, int)):
             if is_skip:
                 for i in group:
                     p(self.text_formats.skip_equal.format(n=i) + "\n")
@@ -804,7 +804,7 @@ class TextPrinter(AbstractTextPrinter):
             table.append_hline(self.table_formats.hline)
 
         # print table data
-        for i in iter_chunks_important(diff.data.to_plain().diffs, context_size=self.context_size):
+        for i in iter_chunks_important(diff.data.to_plain(), context_size=self.context_size):
             if isinstance(i, int):
                 table.append_break(self.table_formats.skip_equal.format(n=i))
             elif isinstance(i, Item):
@@ -989,7 +989,7 @@ class SummaryTextPrinter(AbstractTextPrinter):
         """
         if diff.data.diffs is not None:
             n_eq = n_al = n_ne = 0
-            for is_eq, is_exact, chunk in iter_chunks_verbose(diff.data.diffs):
+            for is_eq, is_exact, chunk in iter_chunks_verbose(diff.data):
                 s = len(chunk.data_a)  # TODO: include data_b?
                 n_eq += s * is_eq * is_exact
                 n_al += s * is_eq * (not is_exact)
