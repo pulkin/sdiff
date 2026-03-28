@@ -116,7 +116,7 @@ p_struct_type = pp.Forward().set_parse_action(lambda x: StructType(tuple(x)))
 p_either_type = (p_atomic_type | p_struct_type).set_parse_action(lambda x: x[0])
 
 p_number = pp.Word(pp.nums).set_parse_action(lambda x: int(x[0]))
-p_shape = pp.Suppress("(") + pp.delimited_list(p_number).set_parse_action(lambda x: tuple(x)) + pp.Suppress(")")
+p_shape = pp.Suppress("(") + pp.DelimitedList(p_number).set_parse_action(lambda x: tuple(x)) + pp.Suppress(")")
 p_any_shape = p_number | p_shape
 p_caption = pp.Suppress(":") + pp.CharsNotIn(":\t") + pp.Suppress(":")  # for some reason tab is causing issues
 
