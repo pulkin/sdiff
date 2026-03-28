@@ -131,3 +131,6 @@ dmypy.json
 
 # Any html in src
 sdiff/**/*.html
+
+# Chatbot context
+AGENTS.md
