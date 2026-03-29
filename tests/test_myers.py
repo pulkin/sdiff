@@ -1,12 +1,12 @@
 import array
 from random import randint, seed
-import numpy as np
 
+import numpy as np
 import pytest
 
-from sdiff.myers import search_graph_recursive
 from sdiff.cython.cmyers import search_graph_recursive as csearch_graph_recursive
 from sdiff.cython.tools import build_inline_module
+from sdiff.myers import search_graph_recursive
 from sdiff.protocols import wrap
 from sdiff.sequence import canonize
 
@@ -190,11 +190,8 @@ def test_fuzz(driver, rtn_diff):
         f = randint(0, 100)
         _map = np.random.randint(0, 99, size=(n, m)) < f
 
-        if rtn_diff:
-            result = array.array("b", b"\xff" * (n + m))
-        else:
-            result = None
+        result = array.array("b", b"\xff" * (n + m)) if rtn_diff else None
         cost = driver(n, m, MapBackend(_map), result)
         if rtn_diff:
             assert compute_cost(result) == cost
-            check_codes_valid(lambda i, j: _map[i, j], result, n, m)
+            check_codes_valid(lambda i, j, _m=_map: _m[i, j], result, n, m)

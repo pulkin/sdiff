@@ -4,7 +4,7 @@ A Myers diff algorithm, adapted from http://blog.robertelder.org/diff-algorithm/
 
 import warnings
 from array import array
-from typing import Callable
+from collections.abc import Callable
 
 try:
     import numpy as np
@@ -146,7 +146,7 @@ def search_graph_recursive(
     n: int,
     m: int,
     comparison_backend: Callable[[int, int], float],
-    out: array = None,
+    out: array | None = None,
     max_cost: int = MAX_COST,
     max_calls: int = MAX_CALLS,
     eq_only: bool = False,
@@ -212,7 +212,7 @@ def search_graph_recursive(
     of additions.
     """
     if eq_only and out is not None:
-        warnings.warn("the 'out' argument is ignored for eq_only=True")
+        warnings.warn("the 'out' argument is ignored for eq_only=True", stacklevel=2)
 
     n_calls = 2  # takes into account additional calls in the two loops below
     max_cost = min(max_cost, n + m)
@@ -252,13 +252,13 @@ def search_graph_recursive(
 
     """
     adapted from http://blog.robertelder.org/diff-algorithm/
-    
+
     First, the diff problem is presented as a directed graph problem
     where nodes are sitting on an n x m grid. Each node is connected
     to adjacent grid points, some nodes are connected along the diagonal.
     The aim is to find the shortest "edit script": a path connecting
     (0, 0) and (n, m).
-    
+
       0   1   2   3   4
     0 ◉︎ → ◉︎ → ◉︎ → ◉︎ → ◉︎
       ↓ ↘ ↓   ↓   ↓   ↓
@@ -267,9 +267,9 @@ def search_graph_recursive(
     2 ◉︎ → ◉︎ → ◉︎ → ◉︎ → ◉︎
       ↓   ↓ ↘ ↓   ↓   ↓
     3 ◉︎ → ◉︎ → ◉︎ → ◉︎ → ◉︎
-    
+
     (n=4, m=3 in the above example)
-    
+
     The cost of the edit script is an integer indicating how many
     horizontal and vertical edges it contains.
     Thus, the edit script with a minimal cost would include the
@@ -277,7 +277,7 @@ def search_graph_recursive(
     In the present implementation, diagonal edges are defined implicitly:
     the digaonal move ``(i, j) -> (i + 1, j + 1)`` is present if
     (and only if) ``bool(diag(i, j))``.
-    
+
     A generic breadth-first search will work here but it requires ``O(n * m)``
     memory to remember the cost of reaching each of the nodes on the grid.
     Thus, the second trick is to track the progress of the breadth-first
@@ -285,9 +285,9 @@ def search_graph_recursive(
     requirement. The drawback is that we will not be able to recover
     the optimal path in the end of the search. But we will still be able
     to compute its cost.
-    
+
     To visualise the approach, you may rotate the graph by 45d.
-    
+
                  0    0                     progress
         ----------- ◉ ---------------     < 0
         |    1    ↙   ↘   1         |
@@ -304,16 +304,16 @@ def search_graph_recursive(
         |           ◉       ◉       |     < 6
         |             ↘   ↙         |
         --------------- ◉ -----------     < 7
-    
+
         ^   ^   ^   ^   ^   ^   ^   ^
         0   1   2   3   4   5   6   7       diagonal
-    
+
     Effectively, 0<=x<=n and 0<=y<=m coordinates are transformed into
     "diagonal" and "progress" coordinates: both running 0..n + m.
     At each iteration if the breadth-first search we update the
     "front": that is, for each diagonal value we increase the "progress"
     by 1 or more if we are allowed to move along the former diagonals.
-    
+
     The third trick is to perform two updates simultaneously: downwards
     from (0, 0) and upwards from (n, m). When the two fronts meet
     (somewhere in the middle) we stop and recover one point of the
@@ -356,7 +356,8 @@ def search_graph_recursive(
             # now, turn (diag, progress) coordinates into (x, y)
             # progress = x + y
             # diag = x - y + m
-            # since the (x, y) -> (x + 1, y + 1) diag is polled through similarity_ratio_getter(x, y)
+            # since the (x, y) -> (x + 1, y + 1) diag is polled through
+            # similarity_ratio_getter(x, y)
             # we need to shift the (x, y) coordinates when reverse
             x = _get_x(diag, progress, m) - is_reverse_front
             y = _get_y(diag, progress, m) - is_reverse_front
@@ -386,52 +387,50 @@ def search_graph_recursive(
 
             # if front and reverse overlap we are done
             # to figure this out we first check whether we are facing ANY diagonal
+            # second, we are checking the progress (check if the two fronts overlap)
             if (
                 diag_facing_from <= diag <= diag_facing_to
                 and (diag - diag_facing_from) % 2 == 0
+                and fronts[ix] >= fronts[ix + nm]
             ):
-                # second, we are checking the progress
-                if (
-                    fronts[ix] >= fronts[ix + nm]
-                ):  # check if the two fronts (start) overlap
-                    if out is not None:
-                        # write the diagonal
-                        for ix in range(
-                            progress_start - 2 * is_reverse_front,
-                            progress - 2 * is_reverse_front,
-                            2 * reverse_as_sign,
-                        ):
-                            out[i + j + ix] = 3
-                            out[i + j + ix + 1] = 0
+                if out is not None:
+                    # write the diagonal
+                    for ix in range(
+                        progress_start - 2 * is_reverse_front,
+                        progress - 2 * is_reverse_front,
+                        2 * reverse_as_sign,
+                    ):
+                        out[i + j + ix] = 3
+                        out[i + j + ix + 1] = 0
 
-                        # recursive calls
-                        x = _get_x(diag, progress_start, m)
-                        y = _get_y(diag, progress_start, m)
-                        x2 = _get_x(diag, progress, m)
-                        y2 = _get_y(diag, progress, m)
-                        if is_reverse_front:
-                            # swap these two around
-                            x, y, x2, y2 = x2, y2, x, y
+                    # recursive calls
+                    x = _get_x(diag, progress_start, m)
+                    y = _get_y(diag, progress_start, m)
+                    x2 = _get_x(diag, progress, m)
+                    y2 = _get_y(diag, progress, m)
+                    if is_reverse_front:
+                        # swap these two around
+                        x, y, x2, y2 = x2, y2, x, y
 
-                        search_graph_recursive(
-                            n=x,
-                            m=y,
-                            comparison_backend=comparison_backend,
-                            out=out,
-                            max_cost=cost // 2 + cost % 2,
-                            i=i,
-                            j=j,
-                        )
-                        search_graph_recursive(
-                            n=n - x2,
-                            m=m - y2,
-                            comparison_backend=comparison_backend,
-                            out=out,
-                            max_cost=cost // 2,
-                            i=i + x2,
-                            j=j + y2,
-                        )
-                    return cost
+                    search_graph_recursive(
+                        n=x,
+                        m=y,
+                        comparison_backend=comparison_backend,
+                        out=out,
+                        max_cost=cost // 2 + cost % 2,
+                        i=i,
+                        j=j,
+                    )
+                    search_graph_recursive(
+                        n=n - x2,
+                        m=m - y2,
+                        comparison_backend=comparison_backend,
+                        out=out,
+                        max_cost=cost // 2,
+                        i=i + x2,
+                        j=j + y2,
+                    )
+                return cost
 
         if n_calls > max_calls:
             break
@@ -441,8 +440,10 @@ def search_graph_recursive(
         # to avoid additional memory usage we need to dance around the order and some
         # other details of how the update is performed
         # each diagonal is updated based on the value of two adjacent diagonals
-        # from the point of view of the ``front_updated`` array, there are 4 possible update patterns,
-        # depending on whether diagonals are even or odd, whether update is forward or reverse
+        # from the point of view of the ``front_updated`` array, there are 4 possible
+        # update patterns,
+        # depending on whether diagonals are even or odd, whether update is forward or
+        # reverse
         # and whether n > m or not
         #
         # (1) fw: even -> odd n > m

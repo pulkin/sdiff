@@ -1,6 +1,6 @@
 import pytest
 
-from sdiff.chunk import Diff, Chunk, Item, iter_chunks_important
+from sdiff.chunk import Chunk, Diff, Item, iter_chunks_important
 
 
 def test_diff():

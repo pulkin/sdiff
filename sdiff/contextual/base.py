@@ -1,9 +1,8 @@
-from dataclasses import dataclass
+import time
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import wraps
-import time
-from typing import Optional
 
 
 @dataclass
@@ -11,7 +10,7 @@ class AnyDiff:
     name: str
     """
     An empty top-level diff type.
-    
+
     Parameters
     ----------
     name
@@ -46,7 +45,7 @@ def profile(name: str):
 
 
 def add_stats(
-    stats: Mapping[str, float], base_stats: Optional[defaultdict[str, float]]
+    stats: Mapping[str, float], base_stats: defaultdict[str, float] | None
 ) -> defaultdict[str, float]:
     if base_stats is None:
         base_stats = defaultdict(float)

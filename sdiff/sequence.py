@@ -1,13 +1,15 @@
-from collections.abc import Sequence, MutableSequence, Generator
-from typing import Any, Optional, Union
 from array import array
-from itertools import groupby
+from collections.abc import Generator, MutableSequence, Sequence
 from functools import partial
+from itertools import groupby
+from typing import Any
 
-from .chunk import Diff, Chunk
-from .myers import search_graph_recursive as pymyers, MAX_COST, MAX_CALLS, MIN_RATIO
-from .cython.cmyers import search_graph_recursive as cmyers
 from sdiff.protocols import wrap
+
+from .chunk import Chunk, Diff
+from .cython.cmyers import search_graph_recursive as cmyers
+from .myers import MAX_CALLS, MAX_COST, MIN_RATIO
+from .myers import search_graph_recursive as pymyers
 
 _nested_containers = (list, tuple)
 
@@ -30,15 +32,15 @@ def diff(
     a: Sequence[object],
     b: Sequence[object],
     eq=None,
-    atol: Optional[float] = None,
-    struct_threshold: Optional[int] = None,
-    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
+    atol: float | None = None,
+    struct_threshold: int | None = None,
+    struct_field_map: Sequence[tuple[str, str]] | None = None,
     min_ratio: float = MIN_RATIO,
     max_cost: int = MAX_COST,
     max_calls: int = MAX_CALLS,
     eq_only: bool = False,
-    kernel: Optional[str] = None,
-    rtn_diff: Union[bool, array] = True,
+    kernel: str | None = None,
+    rtn_diff: bool | array = True,
     dig=None,
     strict: bool = True,
     no_python: bool = False,
@@ -187,10 +189,7 @@ def canonize(codes: MutableSequence[int]):
     n_horizontal = n_vertical = 0
     n = len(codes)
     for code_i in range(n + 1):
-        if code_i != n:
-            code = codes[code_i] % 4
-        else:
-            code = 0
+        code = codes[code_i] % 4 if code_i != n else 0
         if code == 1:
             n_horizontal += 1
         elif code == 2:
@@ -241,7 +240,10 @@ def codes_to_chunks(
         if eq and dig is not None:
             try:
                 details = [
-                    dig(i, j) for i, j in zip(range(offset_a, n), range(offset_b, m))
+                    dig(i, j)
+                    for i, j in zip(
+                        range(offset_a, n), range(offset_b, m), strict=False
+                    )
                 ]
             except NotImplementedError:
                 dig = None
@@ -280,15 +282,15 @@ def diff_nested(
     a,
     b,
     eq=None,
-    atol: Optional[float] = None,
-    struct_threshold: Optional[int] = None,
-    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
-    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
+    atol: float | None = None,
+    struct_threshold: int | None = None,
+    struct_field_map: Sequence[tuple[str, str]] | None = None,
+    min_ratio: float | tuple[float, ...] = MIN_RATIO,
+    max_cost: int | tuple[int, ...] = MAX_COST,
+    max_calls: int | tuple[int, ...] = MAX_CALLS,
     eq_only: bool = False,
-    kernel: Optional[str] = None,
-    rtn_diff: Union[bool, array] = True,
+    kernel: str | None = None,
+    rtn_diff: bool | array = True,
     nested_containers: tuple = _nested_containers,
     max_depth: int = 0xFF,
     _blacklist_a: set = frozenset(),

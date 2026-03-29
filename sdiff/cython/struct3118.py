@@ -2,14 +2,13 @@
 A very naive implementation of parsing type formats from PEP-3118.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import Union, Optional, Mapping
 from hashlib import sha1
 from types import MappingProxyType
 
 import pyparsing as pp
-
 
 c_types = {
     "c": "char",
@@ -52,7 +51,9 @@ class AtomicType(Type):
     z: bool = False
 
     def format(self) -> str:
-        return f"{self.byte_order if self.byte_order != '@' else ''}{'Z' if self.z else ''}{self.typecode}"
+        prefix = self.byte_order if self.byte_order != "@" else ""
+        z = "Z" if self.z else ""
+        return f"{prefix}{z}{self.typecode}"
 
     @cached_property
     def c(self) -> str:
@@ -68,8 +69,8 @@ class AtomicType(Type):
 @dataclass(frozen=True)
 class StructField:
     type: Type
-    shape: Union[tuple[int, ...], int, None]
-    caption: Optional[str] = None
+    shape: tuple[int, ...] | int | None
+    caption: str | None = None
 
     def format(self) -> str:
         shape = self.shape
@@ -79,7 +80,8 @@ class StructField:
             shape = str(shape)
         else:
             shape = "(" + ",".join(map(str, self.shape)) + ")"
-        return f"{shape}{self.type.format()}{':' + self.caption + ':' if self.caption is not None else ''}"
+        caption_part = ":" + self.caption + ":" if self.caption is not None else ""
+        return f"{shape}{self.type.format()}{caption_part}"
 
     @cached_property
     def anonymous(self) -> "StructField":

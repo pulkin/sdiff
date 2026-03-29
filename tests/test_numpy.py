@@ -3,18 +3,18 @@ from array import array
 import numpy as np
 import pytest
 
-from sdiff.chunk import Diff, Chunk, Signature, ChunkSignature
+from sdiff.chunk import Chunk, ChunkSignature, Diff, Signature
 from sdiff.numpy import (
-    diff,
-    get_row_col_diff,
-    align_inflate,
-    diff_aligned_2d,
     NumpyDiff,
-    dtype_diff,
+    align_inflate,
     align_inflate_arrays,
+    diff,
+    diff_aligned_2d,
+    dtype_diff,
+    get_row_col_diff,
 )
 
-from .util import np_chunk_eq, np_raw_diff_eq, np_chunk_eq_numpy_details
+from .util import np_chunk_eq, np_chunk_eq_numpy_details, np_raw_diff_eq
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_random(monkeypatch, a):
                             Chunk(data_a=_a[3:], data_b=_b[3:], eq=True),
                         ],
                     )
-                    for _a, _b in zip(a[4:], b[4:])
+                    for _a, _b in zip(a[4:], b[4:], strict=False)
                 ],
             ),
         ],

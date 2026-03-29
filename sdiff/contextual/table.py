@@ -1,15 +1,15 @@
-from dataclasses import dataclass, field
-from typing import Union, Optional
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from numbers import Number
 
 import numpy as np
 from numpy.random.mtrand import Sequence
 
 from ..chunk import Signature
+from ..numpy import NumpyDiff, align_inflate, diff_aligned_2d
+from ..sequence import MAX_COST, MIN_RATIO
+from ..sequence import diff as diff_sequence
 from .base import AnyDiff, profile
-from ..sequence import diff as diff_sequence, MAX_COST, MIN_RATIO
-from ..numpy import diff_aligned_2d, NumpyDiff, align_inflate
 
 try:
     import pandas as pd
@@ -23,7 +23,7 @@ class Columns:
     b: Sequence[str]
     """
     Column names in the table diff.
-    
+
     Parameters
     ----------
     a
@@ -32,13 +32,13 @@ class Columns:
     """
 
     def is_eq(self) -> bool:
-        return all(i == j for i, j in zip(self.a, self.b))
+        return all(i == j for i, j in zip(self.a, self.b, strict=False))
 
 
 @dataclass
 class TableDiff(AnyDiff):
     data: NumpyDiff
-    columns: Optional[Columns] = None
+    columns: Columns | None = None
     stats: Mapping[str, Number] = field(default_factory=dict, compare=False)
     """
     A diff between tables.
@@ -72,7 +72,7 @@ def diff(
     max_cost_row: int = MAX_COST,
     fill="",
     fill_col_names="",
-    columns: Union[Signature, str, tuple[list[str], list[str]], None] = "columns",
+    columns: Signature | str | tuple[list[str], list[str]] | None = "columns",
     dtype: type = object,
 ) -> TableDiff:
     """

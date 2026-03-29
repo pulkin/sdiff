@@ -1,27 +1,28 @@
-from math import ceil
-from typing import Any, Optional, Union, NamedTuple
 from collections.abc import Sequence
-from itertools import groupby, chain
 from functools import partial
+from itertools import chain, groupby, pairwise
+from math import ceil
+from typing import Any, NamedTuple
 
 import numpy as np
 
-from .chunk import Diff, Chunk, ChunkSignature, Signature
-from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
-from .sequence import diff_nested, diff as sequence_diff, _pop_optional
-from .cython.struct3118 import parse_3118, StructType
+from .chunk import Chunk, ChunkSignature, Diff, Signature
+from .cython.struct3118 import StructType, parse_3118
+from .myers import MAX_CALLS, MAX_COST, MIN_RATIO
 from .protocols import wrap
+from .sequence import _pop_optional, diff_nested
+from .sequence import diff as sequence_diff
 
 
 def diff(
     a,
     b,
-    atol: Optional[float] = None,
-    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
+    atol: float | None = None,
+    min_ratio: float | tuple[float, ...] = MIN_RATIO,
+    max_cost: int | tuple[int, ...] = MAX_COST,
+    max_calls: int | tuple[int, ...] = MAX_CALLS,
     eq_only: bool = False,
-    kernel: Optional[str] = None,
+    kernel: str | None = None,
     rtn_diff: bool = True,
     record_compare_names: bool = False,
     record_compare_data: bool = False,
@@ -108,7 +109,7 @@ def diff(
         struct_field_map = list(
             chain(
                 *(
-                    zip(chunk.data_a, chunk.data_b)
+                    zip(chunk.data_a, chunk.data_b, strict=False)
                     for chunk in dtype_d.diffs
                     if chunk.eq
                 )
@@ -138,7 +139,7 @@ def diff(
 
 def _to_record(
     arg, look_field_names: bool, look_field_dtypes: bool
-) -> tuple[list[str], list[Any], Optional[np.recarray]]:
+) -> tuple[list[str], list[Any], np.recarray | None]:
     if isinstance(arg, np.ndarray):
         if arg.dtype.names is None:
             data = np.rec.fromarrays([arg], dtype=np.dtype([("field", arg.dtype)]))
@@ -147,10 +148,7 @@ def _to_record(
         dtype = data.dtype
     elif isinstance(arg, np.dtype):
         data = None
-        if arg.names is None:
-            dtype = np.dtype([("f", arg)])
-        else:
-            dtype = arg
+        dtype = np.dtype([("f", arg)]) if arg.names is None else arg
     else:
         raise ValueError(f"unknown argument: {arg}")
 
@@ -169,7 +167,7 @@ def _to_record(
         signature.append([i.type for i in parsed_fields])
 
     if signature:
-        fingerprints = list(zip(*signature))
+        fingerprints = list(zip(*signature, strict=False))
     else:
         fingerprints = [None] * len(names)
     return names, fingerprints, data
@@ -178,16 +176,16 @@ def _to_record(
 def dtype_diff(
     a,
     b,
-    min_ratio: Union[float, tuple[float]] = MIN_RATIO,
-    max_cost: Union[int, tuple[int]] = MAX_COST,
-    max_calls: Union[int, tuple[int]] = MAX_CALLS,
+    min_ratio: float | tuple[float] = MIN_RATIO,
+    max_cost: int | tuple[int] = MAX_COST,
+    max_calls: int | tuple[int] = MAX_CALLS,
     eq_only: bool = False,
-    kernel: Optional[str] = None,
+    kernel: str | None = None,
     rtn_diff: bool = True,
     look_field_names: bool = True,
     look_field_dtypes: bool = False,
     look_field_data: bool = False,
-    data_atol: Optional[float] = None,
+    data_atol: float | None = None,
     data_min_ratio: float = MIN_RATIO,
     data_max_cost: int = MAX_COST,
 ) -> Diff:
@@ -290,8 +288,8 @@ def align_inflate_arrays(
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Aligns arrays towards a common (record) dtype.
-    Given two record arrays and the dtype diff, produces the corresponding pair of arrays with the same record
-    dtype containing fields from both arrays.
+    Given two record arrays and the dtype diff, produces the corresponding pair
+    of arrays with the same record dtype containing fields from both arrays.
 
     Parameters
     ----------
@@ -340,7 +338,7 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
     equality statuses (equal/not equal).
     """
     if n == 0 and m == 0:
-        return Signature(parts=tuple())
+        return Signature(parts=())
     if n == 0 or m == 0:
         return Signature(parts=(ChunkSignature(size_a=n, size_b=m, eq=False),))
 
@@ -400,7 +398,7 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
                 size_b=int((is_b[fr:to]).sum()),
                 eq=bool(is_eq[fr + 1]),
             )
-            for fr, to in zip(ix[:-1], ix[1:])
+            for fr, to in pairwise(ix)
         )
     )
 
@@ -408,11 +406,11 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
 def get_row_col_diff(
     a: np.ndarray,
     b: np.ndarray,
-    atol: Optional[float] = None,
-    min_ratio: Union[float, tuple[float]] = MIN_RATIO,
-    max_cost: Union[int, tuple[int]] = MAX_COST,
-    max_calls: Union[int, tuple[int]] = MAX_CALLS,
-    kernel: Optional[str] = None,
+    atol: float | None = None,
+    min_ratio: float | tuple[float] = MIN_RATIO,
+    max_cost: int | tuple[int] = MAX_COST,
+    max_calls: int | tuple[int] = MAX_CALLS,
+    kernel: str | None = None,
 ) -> tuple[Signature, Signature]:
     """
     Aligns rows and columns of two matrices and returns the corresponding pair
@@ -499,7 +497,8 @@ def align_inflate(
     -------
     The inflated array.
     """
-    assert (ndim := a.ndim) == b.ndim
+    ndim = a.ndim
+    assert ndim == b.ndim
 
     s = len(sig)
     a_shape = list(a.shape)
@@ -644,13 +643,13 @@ def diff_aligned_2d(
     b: np.ndarray,
     fill,
     eq=None,
-    atol: Optional[float] = None,
+    atol: float | None = None,
     fill_eq=_undefined,
-    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
-    col_diff_sig: Optional[Signature] = None,
-    kernel: Optional[str] = None,
+    min_ratio: float | tuple[float, ...] = MIN_RATIO,
+    max_cost: int | tuple[int, ...] = MAX_COST,
+    max_calls: int | tuple[int, ...] = MAX_CALLS,
+    col_diff_sig: Signature | None = None,
+    kernel: str | None = None,
 ) -> NumpyDiff:
     """
     Computes an aligned diff between numpy matrices.
@@ -701,10 +700,13 @@ def diff_aligned_2d(
     - ``result.a``: inflated matrix a
     - ``result.b``: inflated matrix b
     - ``result.eq``: equality matrix
-    - ``result.row_diff_signature``: a signature describing the alignment of rows in a and b;
-    - ``result.col_diff_signature``: a signature describing the alignment of cols in a and b;
+    - ``result.row_diff_signature``: a signature describing the alignment of rows
+      in a and b;
+    - ``result.col_diff_signature``: a signature describing the alignment of cols
+      in a and b;
 
-    Unlike other diff routines, numpy diff returns an intermediate representation of diff.
+    Unlike other diff routines, numpy diff returns an intermediate representation
+    of diff.
     You can convert it to the common ``Diff`` type through ``result.to_diff``.
     """
     a_, b_ = a, b
@@ -751,7 +753,9 @@ def diff_aligned_2d(
                 atol=atol,
                 struct_field_map=[
                     (i, j)
-                    for i, j, m in zip(a_r.dtype.fields, b_r.dtype.fields, mask)
+                    for i, j, m in zip(
+                        a_r.dtype.fields, b_r.dtype.fields, mask, strict=False
+                    )
                     if m
                 ],
                 struct_threshold=threshold,
@@ -791,12 +795,9 @@ def diff_aligned_2d(
             a_, b_ = a, b
 
     # a, b, a_, b_ are all of the same exact shape starting here
-    if atol is None:
-        eq_matrix = a_ == b_
-    else:
-        eq_matrix = np.abs(a_ - b_) <= atol
-    idx = tuple()
-    for dim, sig in enumerate(signatures):
+    eq_matrix = a_ == b_ if atol is None else np.abs(a_ - b_) <= atol
+    idx = ()
+    for _dim, sig in enumerate(signatures):
         offset = 0
         for part in sig.parts:
             if not part.eq:

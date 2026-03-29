@@ -1,10 +1,10 @@
-from typing import Optional, Callable, Any
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from .cython.tools import build_inline_module
 from .cython.compare import ComparisonBackend
-from .cython.struct3118 import parse_3118, Type, AtomicType, StructType, StructField
+from .cython.struct3118 import AtomicType, StructField, StructType, Type, parse_3118
+from .cython.tools import build_inline_module
 
 IMPORT = (
     "import cython",
@@ -53,14 +53,15 @@ def compose_init(fields: list[tuple[str, str]]) -> list[str]:
 
 def wrap_python_callable(
     fun: Callable[[int, int], Any],
-    resolver: Optional[Callable[[int, int], Any]],
+    resolver: Callable[[int, int], Any] | None,
     **kwargs,
 ) -> ComparisonBackend:
     """
     Wraps a python callable into a comparison protocol.
 
     The callable has to accept two integers (two positions in a, b sequences) and return
-    an object that can be cast to a boolean indicating whether the elements can be aligned or not.
+    an object that can be cast to a boolean indicating whether the elements can
+    be aligned or not.
 
     This protocol is potentially slow as it will call ``fun`` from python runtime.
 
@@ -101,12 +102,13 @@ def wrap_python_callable(
 
 
 def wrap_python_pair(
-    a: Sequence[Any], b: Sequence[Any], atol: Optional[float] = None, **kwargs
+    a: Sequence[Any], b: Sequence[Any], atol: float | None = None, **kwargs
 ) -> ComparisonBackend:
     """
     Wraps a pair of python sequences (or anything indexable) into a comparison protocol.
 
-    This protocol is potentially slow as it will call ``a[i].__eq__(b[j])`` or ``a[i] - b[j]`` from python runtime.
+    This protocol is potentially slow as it will call ``a[i].__eq__(b[j])`` or
+    ``a[i] - b[j]`` from python runtime.
 
     Parameters
     ----------
@@ -196,12 +198,13 @@ class _CompareSpec:
         if (n := len(left.fields)) != (m := len(right.fields)):
             raise ValueError(f"structs have different field count: {n} != {m}")
         field_map = tuple(
-            (fa.caption, fb.caption) for fa, fb in zip(left.fields, right.fields)
+            (fa.caption, fb.caption)
+            for fa, fb in zip(left.fields, right.fields, strict=False)
         )
         return _CompareSpec(left, right, field_map)
 
     def walk(
-        self, _visited: Optional[set["_CompareSpec"]] = None
+        self, _visited: set["_CompareSpec"] | None = None
     ) -> Generator["_CompareSpec", None, None]:
         if _visited is None:
             _visited = set()
@@ -222,7 +225,7 @@ class _CompareSpec:
 class _MVCodeGen:
     """A class for cython code generation for memoryviews"""
 
-    def __init__(self, atol: Optional[float] = None):
+    def __init__(self, atol: float | None = None):
         self.atol = atol
 
     def get_type_c_name(self, t: Type) -> str:
@@ -277,7 +280,8 @@ class _MVCodeGen:
             fields = [left, right]
             if self.atol is not None:
                 fields.append("atol")
-            return f"{self.get_struct_compare_def_name(left_t, right_t)}({', '.join(fields)})"
+            name = self.get_struct_compare_def_name(left_t, right_t)
+            return f"{name}({', '.join(fields)})"
         else:
             raise ValueError(f"unknown or incompatible types: {left_t}, {right_t}")
 
@@ -292,14 +296,16 @@ class _MVCodeGen:
     ) -> list[str]:
         if left_field.shape != right_field.shape:
             raise ValueError(
-                f"cannot compare fields with differing shapes: {left_field} vs {right_field}"
+                f"cannot compare fields with differing shapes:"
+                f" {left_field} vs {right_field}"
             )
         shape = left_field.shape
 
         if shape is None:
-            return [
-                f"{indent}{result_statement.format(expr=self.get_type_compare_expr(left, left_field.type, right, right_field.type))}"
-            ]
+            expr = self.get_type_compare_expr(
+                left, left_field.type, right, right_field.type
+            )
+            return [f"{indent}{result_statement.format(expr=expr)}"]
         elif isinstance(shape, int):
             shape = (shape,)
 
@@ -313,12 +319,12 @@ class _MVCodeGen:
 
         code.extend(
             [
-                f"{indent}if not ({self.get_type_compare_expr(f'{left}{subscript}', left_field.type, f'{right}{subscript}', right_field.type)}):",
+                f"{indent}if not ({self.get_type_compare_expr(f'{left}{subscript}', left_field.type, f'{right}{subscript}', right_field.type)}):",  # noqa: E501
                 f"{indent}  break",
             ]
         )
 
-        for i, s in reversed(list(enumerate(shape))):
+        for i, _s in reversed(list(enumerate(shape))):
             indent = indent[:-2]
             if i == 0:
                 code.extend(
@@ -357,7 +363,7 @@ class _MVCodeGen:
 
         code.extend(
             [
-                f"cdef int {self.get_struct_compare_def_name(left_t, right_t)}({args}):",
+                f"cdef int {self.get_struct_compare_def_name(left_t, right_t)}({args}):",  # noqa: E501
                 "  cdef int result = 0",
             ]
         )
@@ -399,8 +405,8 @@ class _MVCodeGen:
             [
                 "@cython.wraparound(False)",
                 "@cython.boundscheck(False)",
-                f"cdef {self.get_struct_compare_def_name(left_t, right_t, 'resolve')}({args}):",
-                f"  cdef array.array result = array.clone(_int_array_template, {len(field_map)}, zero=True)",
+                f"cdef {self.get_struct_compare_def_name(left_t, right_t, 'resolve')}({args}):",  # noqa: E501
+                f"  cdef array.array result = array.clone(_int_array_template, {len(field_map)}, zero=True)",  # noqa: E501
                 "  cdef int[:] result_view = result",
             ]
         )
@@ -426,9 +432,9 @@ class _MVCodeGen:
 def wrap_memoryview(
     a: memoryview,
     b: memoryview,
-    atol: Optional[float] = None,
-    struct_threshold: Optional[int] = None,
-    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
+    atol: float | None = None,
+    struct_threshold: int | None = None,
+    struct_field_map: Sequence[tuple[str, str]] | None = None,
     **kwargs,
 ):
     """
@@ -482,7 +488,7 @@ def wrap_memoryview(
     init_args = {"a": a, "b": b}
     codegen = _MVCodeGen(atol=atol)
 
-    for side, name in zip((struct_a, struct_b), "ab"):
+    for side, name in zip((struct_a, struct_b), "ab", strict=False):
         if isinstance(side, AtomicType) and side.typecode == "O":
             fields.append(("object[:]", name))
         else:
@@ -538,7 +544,7 @@ def wrap_memoryview(
         if atol is not None:
             _args += ", self.atol"
         source_code.append(
-            f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b)}(self.a[i], self.b[j]{_args})"
+            f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b)}(self.a[i], self.b[j]{_args})"  # noqa: E501
         )
         _args = ""
         if atol is not None:
@@ -546,7 +552,7 @@ def wrap_memoryview(
         source_code.extend(
             [
                 *RESOLVE_DEF,
-                f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b, 'resolve')}(self.a[i], self.b[j]{_args})",
+                f"    return {codegen.get_struct_compare_def_name(struct_a, struct_b, 'resolve')}(self.a[i], self.b[j]{_args})",  # noqa: E501
             ]
         )
     return build_inline_module("\n".join(source_code), **kwargs).Backend(**init_args)
@@ -555,10 +561,10 @@ def wrap_memoryview(
 def wrap(
     arg,
     allow_python: bool = True,
-    atol: Optional[float] = None,
-    struct_threshold: Optional[int] = None,
-    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
-    resolver: Optional[Callable[[int, int], Any]] = None,
+    atol: float | None = None,
+    struct_threshold: int | None = None,
+    struct_field_map: Sequence[tuple[str, str]] | None = None,
+    resolver: Callable[[int, int], Any] | None = None,
     **kwargs,
 ):
     """
@@ -623,7 +629,8 @@ def wrap(
                     )
         if not allow_python:
             raise ValueError(
-                "failed to pick a type-aware protocol (failed to convert to memoryview or data type mismatch)"
+                "failed to pick a type-aware protocol"
+                " (failed to convert to memoryview or data type mismatch)"
             )
         return wrap_python_pair(a=a, b=b, atol=atol, **kwargs)
     else:

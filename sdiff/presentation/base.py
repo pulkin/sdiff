@@ -1,20 +1,20 @@
-from dataclasses import dataclass, field
-from sys import stdout
-from io import TextIOBase
 import os
-from typing import Union, Any, Optional
-from collections.abc import Sequence, Callable, Iterator
-from itertools import groupby
 import re
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass, field
 from html import escape as html_escape
+from io import TextIOBase
+from itertools import groupby, pairwise
+from sys import stdout
 from textwrap import dedent
+from typing import Any
 
-from .string_tools import align, visible_len
+from ..chunk import Diff, Item, iter_chunks_important, iter_chunks_verbose
 from ..contextual.base import AnyDiff
+from ..contextual.path import CompositeDiff, DeltaDiff, MIMEDiff, PathDiff
 from ..contextual.table import TableDiff
 from ..contextual.text import TextDiff
-from ..contextual.path import PathDiff, CompositeDiff, DeltaDiff, MIMEDiff
-from ..chunk import Item, Diff, iter_chunks_verbose, iter_chunks_important
+from .string_tools import align, visible_len
 
 
 class TableBreak(str):
@@ -28,14 +28,12 @@ class TableHline(str):
 @dataclass
 class Table:
     column_mask: Sequence[bool]
-    data: list[Union[tuple[str, ...], TableBreak, TableHline]] = field(
-        default_factory=list
-    )
+    data: list[tuple[str, ...] | TableBreak | TableHline] = field(default_factory=list)
     etc: str = "..."
     pre_str: Callable[[Any], str] = str
     """
     Represents a simple table.
-    
+
     Parameters
     ----------
     column_mask
@@ -125,7 +123,7 @@ class Table:
         ]
 
     def compute(
-        self, join: str, widths: Optional[list[int]] = None, elli: str = "…"
+        self, join: str, widths: list[int] | None = None, elli: str = "…"
     ) -> Iterator[str]:
         """
         Computes the table.
@@ -151,7 +149,7 @@ class Table:
                 else:
                     yield join.join(
                         align(s, n, elli=elli, justify=justify)
-                        for s, n in zip(i, widths)
+                        for s, n in zip(i, widths, strict=False)
                     )
                     justify = "right"
             elif isinstance(i, TableBreak):
@@ -286,7 +284,7 @@ class HTMLTextFormats(TextFormats):
     hello: str = dedent("""
     <!DOCTYPE html><html><head>
     <meta charset=\"UTF-8\">
-    <link rel="stylesheet" href="https://unpkg.com/mvp.css"> 
+    <link rel="stylesheet" href="https://unpkg.com/mvp.css">
     <style>
       .diff-rm {
         background-color: #B8405E;
@@ -471,7 +469,10 @@ class HTMLTableFormats(TableFormats):
     column_plain: str = "<th>{column}</th>"
     column_add: str = '<th class="diff-add">{column}</th>'
     column_rm: str = '<th class="diff-rm">{column}</th>'
-    column_both: str = '<th><span class="diff-rm">{column_a}</span><span class="diff-add">{column_b}</span></th>'
+    column_both: str = (
+        '<th><span class="diff-rm">{column_a}</span>'
+        '<span class="diff-add">{column_b}</span></th>'
+    )
 
     ix_row_header: str = (
         '<td class="diff-context">A</td><td class="diff-context">B</td>'
@@ -579,7 +580,7 @@ class AbstractTextPrinter:
         raise NotImplementedError
 
 
-def _format_text_line(diff: Diff, a_fmt: Optional[str], b_fmt: Optional[str]) -> str:
+def _format_text_line(diff: Diff, a_fmt: str | None, b_fmt: str | None) -> str:
     line_parts = []
     for chunk in diff.diffs:
         if chunk.eq:
@@ -601,7 +602,7 @@ class TextPrinter(AbstractTextPrinter):
     text_formats: TextFormats = field(default_factory=TextFormats)
     """
     A simple diff printer.
-    
+
     Parameters
     ----------
     printer
@@ -664,22 +665,17 @@ class TextPrinter(AbstractTextPrinter):
         v = self.verbosity
 
         p(self.text_formats.header.format(header=f"comparing {diff.name}"))
-        if v >= 1:
-            if isinstance(diff, (TableDiff, TextDiff)):
-                p(f" (ratio={diff.data.ratio:.4f})")
-        if v >= 2:
-            if isinstance(diff, TableDiff):
-                p(f"\n  aligned ratio={diff.data.aligned_ratio:.4f}")
-                for name, orig, inflated in [
-                    ("a", diff.data.a_shape, diff.data.a.shape),
-                    ("b", diff.data.b_shape, diff.data.b.shape),
-                ]:
-                    n = orig[0] * orig[1]
-                    if n:
-                        x = f"{inflated[0] * inflated[1] / n:.2f}"
-                    else:
-                        x = "∞"
-                    p(f"\n  {name}.shape={orig} -> {inflated} x{x}")
+        if v >= 1 and isinstance(diff, TableDiff | TextDiff):
+            p(f" (ratio={diff.data.ratio:.4f})")
+        if v >= 2 and isinstance(diff, TableDiff):
+            p(f"\n  aligned ratio={diff.data.aligned_ratio:.4f}")
+            for name, orig, inflated in [
+                ("a", diff.data.a_shape, diff.data.a.shape),
+                ("b", diff.data.b_shape, diff.data.b.shape),
+            ]:
+                n = orig[0] * orig[1]
+                x = f"{inflated[0] * inflated[1] / n:.2f}" if n else "∞"
+                p(f"\n  {name}.shape={orig} -> {inflated} x{x}")
         p("\n")
 
     def print_path(self, diff: PathDiff):
@@ -723,9 +719,10 @@ class TextPrinter(AbstractTextPrinter):
         diff
             The diff to print.
         """
-        self.printer.write(
-            f"{self.text_formats.mime_entry.format(path_key=diff.name, path_a=diff.mime_a, path_b=diff.mime_b)}\n"
+        fmt = self.text_formats.mime_entry.format(
+            path_key=diff.name, path_a=diff.mime_a, path_b=diff.mime_b
         )
+        self.printer.write(f"{fmt}\n")
 
     def print_text(self, diff: TextDiff):
         """
@@ -769,10 +766,9 @@ class TextPrinter(AbstractTextPrinter):
                         if i.a is None and i.b is not None:  # addition
                             p(fmt.format(line=e(i.b)))
 
-                        elif i.b is None and i.a is not None:  # removal
-                            p(fmt.format(line=e(i.a)))
-
-                        elif i.diff is None:  # context
+                        elif (
+                            i.b is None and i.a is not None
+                        ) or i.diff is None:  # removal
                             p(fmt.format(line=e(i.a)))
 
                         else:  # inline diff
@@ -829,7 +825,7 @@ class TextPrinter(AbstractTextPrinter):
                     *(
                         i or col_a != col_b
                         for i, col_a, col_b in zip(
-                            show_col[1:], diff.columns.a, diff.columns.b
+                            show_col[1:], diff.columns.a, diff.columns.b, strict=False
                         )
                     ),
                 ]
@@ -840,7 +836,7 @@ class TextPrinter(AbstractTextPrinter):
         # print column names
         if diff.columns is not None:
             row = [self.table_formats.ix_row_header.format(col_ix=0)]
-            for col_a, col_b in zip(diff.columns.a, diff.columns.b):
+            for col_a, col_b in zip(diff.columns.a, diff.columns.b, strict=False):
                 col_ix = len(row)
                 if col_a == col_b:
                     col = self.table_formats.column_plain.format(
@@ -938,7 +934,7 @@ class TextPrinter(AbstractTextPrinter):
                         row_b.append(
                             self.table_formats.ix_row_none.format(col_ix=len(row_b))
                         )
-                    for a, b, eq in zip(i.a, i.b, i.diff):
+                    for a, b, eq in zip(i.a, i.b, i.diff, strict=False):
                         if eq:
                             row_a.append(
                                 self.table_formats.data_row_same.format(
@@ -999,7 +995,8 @@ class TextPrinter(AbstractTextPrinter):
             head_len = visible_len(self.table_formats.row_head)
             spacer_len = visible_len(self.table_formats.row_spacer)
             tail_len = visible_len(self.table_formats.row_tail)
-            # adjustable width excludes spacer, head, tail, index column and minimal width
+            # adjustable width excludes spacer, head, tail, index column and
+            # minimal width
             adj_width = max(
                 0,
                 self.width
@@ -1017,7 +1014,10 @@ class TextPrinter(AbstractTextPrinter):
             if s > adj_width:
                 ratio = adj_width / s
                 cs = [int(i * ratio) for i in cs]
-            widths = [widths[0], *(j - i + min_width for i, j in zip(cs[:-1], cs[1:]))]
+            widths = [
+                widths[0],
+                *(j - i + min_width for i, j in pairwise(cs)),
+            ]
 
         for row in table.compute(
             self.table_formats.row_spacer, widths=widths, elli=self.table_formats.elli
@@ -1063,17 +1063,29 @@ class SummaryTextPrinter(AbstractTextPrinter):
     @property
     def _empty_fmt(self) -> str:
         f = self.formats
-        return f"{f.ratio_non_fmt}{f.sep}{f.n_equal_non_fmt}{f.sep}{f.n_aligned_non_fmt}{f.sep}{f.n_neq_non_fmt}{f.sep}{{}}"
+        sep = f.sep
+        return (
+            f"{f.ratio_non_fmt}{sep}{f.n_equal_non_fmt}{sep}"
+            f"{f.n_aligned_non_fmt}{sep}{f.n_neq_non_fmt}{sep}{{}}"
+        )
 
     @property
     def _ratio_fmt(self) -> str:
         f = self.formats
-        return f"{f.ratio_fmt}{f.sep}{f.n_equal_non_fmt}{f.sep}{f.n_aligned_non_fmt}{f.sep}{f.n_neq_non_fmt}{f.sep}{{}}"
+        sep = f.sep
+        return (
+            f"{f.ratio_fmt}{sep}{f.n_equal_non_fmt}{sep}"
+            f"{f.n_aligned_non_fmt}{sep}{f.n_neq_non_fmt}{sep}{{}}"
+        )
 
     @property
     def _full_fmt(self) -> str:
         f = self.formats
-        return f"{f.ratio_fmt}{f.sep}{f.n_equal_fmt}{f.sep}{f.n_aligned_fmt}{f.sep}{f.n_neq_fmt}{f.sep}{{}}"
+        sep = f.sep
+        return (
+            f"{f.ratio_fmt}{sep}{f.n_equal_fmt}{sep}"
+            f"{f.n_aligned_fmt}{sep}{f.n_neq_fmt}{sep}{{}}"
+        )
 
     def print_equal(self, diff: AnyDiff):
         """

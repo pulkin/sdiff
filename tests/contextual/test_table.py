@@ -1,9 +1,9 @@
-import pytest
 import numpy as np
+import pytest
 
-from sdiff.contextual.table import diff, TableDiff
+from sdiff.chunk import ChunkSignature, Signature
+from sdiff.contextual.table import TableDiff, diff
 from sdiff.numpy import NumpyDiff
-from sdiff.chunk import Signature, ChunkSignature
 
 from ..util import np_raw_diff_eq
 

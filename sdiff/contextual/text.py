@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field, replace
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from numbers import Number
 
-from .base import AnyDiff, profile
+from ..chunk import Chunk, Diff
 from ..sequence import MAX_COST, MIN_RATIO, diff_nested
-from ..chunk import Diff, Chunk
+from .base import AnyDiff, profile
 
 
 @dataclass
@@ -103,7 +103,7 @@ def diff(
                     coarse_diff = j.get_coarse(coarse)
                     if post_last is not None:
                         coarse_diff = replace(
-                            coarse_diff, diffs=coarse_diff.diffs + [post_last]
+                            coarse_diff, diffs=[*coarse_diff.diffs, post_last]
                         )
                     new_details.append(coarse_diff)
                 new_diffs.append(replace(i, details=new_details))

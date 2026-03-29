@@ -1,10 +1,9 @@
-from pathlib import Path
-import logging
-from typing import Optional
-from collections.abc import Iterator, Sequence, Callable
-import re
 import fnmatch
+import logging
+import re
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -12,7 +11,7 @@ class MatchRule:
     accept: bool
     """
     A rule matching paths.
-    
+
     Parameters
     ----------
     accept
@@ -51,7 +50,7 @@ class RegexMatchRule(MatchRule):
     pattern_str: str = None
     """
     A rule matching paths.
-    
+
     Parameters
     ----------
     accept
@@ -109,7 +108,7 @@ accept_folders = glob_rule(True, "*/")
 
 def iterdir(
     node: Path,
-    root: Optional[Path] = None,
+    root: Path | None = None,
     rules: Sequence[MatchRule] = (accept_all,),
     sort: bool = False,
 ) -> Iterator[tuple[Path, MatchRule, str]]:
@@ -169,11 +168,11 @@ def iterdir(
 def iter_match(
     a: Path,
     b: Path,
-    transform: Optional[Callable[[str], str]] = None,
+    transform: Callable[[str], str] | None = None,
     rules: Sequence[MatchRule] = (accept_all,),
     sort: bool = False,
-    cherry_pick: Optional[str] = None,
-) -> Iterator[tuple[Optional[Path], Optional[Path], str]]:
+    cherry_pick: str | None = None,
+) -> Iterator[tuple[Path | None, Path | None, str]]:
     """
     Iterates two path trees and matches the nodes.
 

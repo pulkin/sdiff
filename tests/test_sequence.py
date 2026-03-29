@@ -1,9 +1,10 @@
-import pytest
-import numpy as np
 from array import array
 
+import numpy as np
+import pytest
+
+from sdiff.chunk import Chunk, Diff
 from sdiff.sequence import diff, diff_nested
-from sdiff.chunk import Diff, Chunk
 
 from .util import np_chunk_eq
 
@@ -484,7 +485,7 @@ def test_nested_np(monkeypatch, max_depth):
                             ),
                         ],
                     )
-                    for _a, _b in zip(a[4:], b[4:])
+                    for _a, _b in zip(a[4:], b[4:], strict=False)
                 ],
             ),
         ],

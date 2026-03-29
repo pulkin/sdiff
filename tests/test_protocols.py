@@ -1,9 +1,10 @@
-import pytest
 from array import array
-import numpy as np
 
+import numpy as np
+import pytest
+
+from sdiff.cython.struct3118 import AtomicType, StructField, StructType, parse_3118
 from sdiff.protocols import wrap
-from sdiff.cython.struct3118 import parse_3118, StructType, StructField, AtomicType
 
 
 def test_call_protocol():

@@ -1,12 +1,12 @@
 import pytest
 
 from sdiff.cli.path_util import (
-    iterdir,
-    iter_match,
     accept_all,
     accept_folders,
-    reject_all,
     glob_rule,
+    iter_match,
+    iterdir,
+    reject_all,
 )
 
 

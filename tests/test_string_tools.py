@@ -1,7 +1,6 @@
-from sdiff.presentation.string_tools import visible_len, align, iter_escape
-
 import pytest
 
+from sdiff.presentation.string_tools import align, iter_escape, visible_len
 
 pure = "a very long colored string"
 hello = f"\033[30m{pure}\033[m"

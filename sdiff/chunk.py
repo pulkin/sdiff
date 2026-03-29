@@ -1,10 +1,10 @@
 import itertools
-from itertools import groupby
-from typing import Any, Optional, Union
-from collections.abc import Callable, Sequence, Generator
-from functools import reduce, cached_property
-from operator import add
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property, reduce
+from itertools import groupby
+from operator import add
+from typing import Any, Union
 
 from .cython.compare import ComparisonBackend
 
@@ -83,7 +83,7 @@ class Signature:
     @classmethod
     def aligned(cls, n: int) -> "Signature":
         if n == 0:
-            return cls(tuple())
+            return cls(())
         return cls((ChunkSignature.aligned(n),))
 
 
@@ -109,7 +109,7 @@ class Chunk:
     data_a: Sequence[Any]
     data_b: Sequence[Any]
     eq: bool
-    details: Optional[Sequence[Any]] = None
+    details: Sequence[Any] | None = None
 
     def to_string(
         self,
@@ -127,18 +127,15 @@ class Chunk:
         summary_uri_b = f"{uri_b}[{offset_b}:{offset_b + len(data_b)}]"
 
         is_nested = isinstance(eq, Sequence)
-        if is_nested:
-            s = "≈"
-        else:
-            s = "=" if eq else "≠"
-        base = f"{prefix}{summary_uri_a}{s}{summary_uri_b}: {repr(data_a)} {s} {repr(data_b)}"
+        s = "≈" if is_nested else "=" if eq else "≠"
+        base = f"{prefix}{summary_uri_a}{s}{summary_uri_b}: {data_a!r} {s} {data_b!r}"
 
         if not is_nested:
             return base
 
         # a sequence of aligned elements with some differences
         result = [base]
-        for _i, (_eq, _a, _b) in enumerate(zip(eq, data_a, data_b)):
+        for _i, (_eq, _a, _b) in enumerate(zip(eq, data_a, data_b, strict=False)):
             result.append(
                 _eq.to_string(
                     prefix=prefix + "··",
@@ -190,7 +187,7 @@ def iter_chunks_compressed(diff: "Diff") -> Generator[Chunk, None, None]:
     Each yielded value is a combined group of differences compressed into
     a single `Chunk` object.
     """
-    for key, group in itertools.groupby(diff.diffs, key=lambda i: i.eq):
+    for _key, group in itertools.groupby(diff.diffs, key=lambda i: i.eq):
         yield reduce(add, group)
 
 
@@ -229,9 +226,10 @@ def iter_chunks_verbose(
     diff: "Diff",
 ) -> Generator[tuple[bool, bool, Chunk], None, None]:
     """
-    Iterates over diff chunks and yields them together with two booleans: "equal" and "exact".
-    The "equal" boolean has the same meaning as `Chunk.eq`: it tells whether the sub-sequences are aligned.
-    The "exact" boolean tells whether an "equal" (aligned) Chunk is equal "exactly" or "approximately".
+    Iterates over diff chunks and yields them together with two booleans:
+    "equal" and "exact". The "equal" boolean has the same meaning as `Chunk.eq`:
+    it tells whether the sub-sequences are aligned. The "exact" boolean tells
+    whether an "equal" (aligned) Chunk is equal "exactly" or "approximately".
 
     Parameters
     ----------
@@ -298,6 +296,7 @@ def iter_chunks_important(
         for (i, a), (j, b) in zip(
             enumerate(data_a[:context_size], counter_a),
             enumerate(data_b[:context_size], counter_b),
+            strict=False,
         ):
             yield Item(a=a, b=b, ix_a=i, ix_b=j)
 
@@ -311,6 +310,7 @@ def iter_chunks_important(
         for (i, a), (j, b) in zip(
             enumerate(data_a[gap:], counter_a + gap),
             enumerate(data_b[gap:], counter_b + gap),
+            strict=False,
         ):
             yield Item(a=a, b=b, ix_a=i, ix_b=j)
 
@@ -322,7 +322,7 @@ def iter_chunks_important(
             if not is_exact:
                 yield from context_tail
                 for i, (a, b, diff) in enumerate(
-                    zip(chunk.data_a, chunk.data_b, chunk.details)
+                    zip(chunk.data_a, chunk.data_b, chunk.details, strict=False)
                 ):
                     yield Item(
                         a=a, b=b, ix_a=counter_a + i, ix_b=counter_b + i, diff=diff
@@ -372,8 +372,8 @@ class Diff:
     """
 
     ratio: float
-    diffs: Optional[list[Chunk]]
-    protocol: Optional[ComparisonBackend] = field(
+    diffs: list[Chunk] | None
+    protocol: ComparisonBackend | None = field(
         default=None, repr=False, hash=False, compare=False
     )
 
@@ -439,11 +439,12 @@ class Diff:
 
     def get_inflated_ab(
         self,
-        hook_a_b: Optional[CrossHookType] = None,
-        hook_b_a: Optional[CrossHookType] = None,
+        hook_a_b: CrossHookType | None = None,
+        hook_b_a: CrossHookType | None = None,
     ) -> tuple[list[Any], list[Any]]:
         """
-        Computes a pair of aligned sequences by inflating sequence `a` to include the values from `b` and vice versa.
+        Computes a pair of aligned sequences by inflating sequence `a` to include
+        the values from `b` and vice versa.
 
         Returns
         -------
@@ -550,6 +551,6 @@ class Item:
 
     a: Any
     b: Any
-    ix_a: Optional[int]
-    ix_b: Optional[int]
-    diff: Optional[Diff] = None
+    ix_a: int | None
+    ix_b: int | None
+    diff: Diff | None = None

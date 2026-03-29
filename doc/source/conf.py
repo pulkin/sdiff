@@ -6,8 +6,9 @@ project = dist.get("name")
 author = dist.get("author-email")
 version = release = dist.get("version")
 copyright = (
-    f"{dist.get('author-email')} and contributors. All rights reserved. Distributed under the terms of the "
-    f"{dist.get('license')} license. See LICENSE.md for more details."
+    f"{dist.get('author-email')} and contributors. All rights reserved."
+    f" Distributed under the terms of the"
+    f" {dist.get('license')} license. See LICENSE.md for more details."
 )
 
 # General configuration

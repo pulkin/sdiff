@@ -1,49 +1,48 @@
 import argparse
-from collections import namedtuple, defaultdict
-from pathlib import Path
-from typing import Optional
-from collections.abc import Iterator, Sequence
 import re
-from sys import stdout
-from multiprocessing import Pool
-from contextlib import nullcontext
 import time
+from collections import defaultdict, namedtuple
+from collections.abc import Iterator, Sequence
+from contextlib import nullcontext
+from multiprocessing import Pool
+from pathlib import Path
+from sys import stdout
 
-from .path_util import accept_all, glob_rule, iter_match
-from .func_util import starpartial
 from ..contextual.base import AnyDiff, add_stats
-from ..contextual.path import diff_path, VariableOption, GroupedValue
+from ..contextual.path import GroupedValue, VariableOption, diff_path
 from ..myers import MAX_COST, MIN_RATIO
 from ..presentation.base import (
-    TextPrinter,
-    SummaryTextPrinter,
-    MarkdownTextFormats,
-    MarkdownTableFormats,
-    TermTextFormats,
-    TermTableFormats,
-    HTMLTextFormats,
     HTMLTableFormats,
+    HTMLTextFormats,
+    MarkdownTableFormats,
+    MarkdownTextFormats,
+    SummaryTextPrinter,
+    TermTableFormats,
+    TermTextFormats,
+    TextPrinter,
 )
+from .func_util import starpartial
+from .path_util import accept_all, glob_rule, iter_match
 
 
 def process_iter(
     a: Path,
     b: Path,
-    includes: Sequence[tuple[bool, str]] = tuple(),
-    rename: Sequence[tuple[str, str]] = tuple(),
-    cherry_pick: Optional[str] = None,
+    includes: Sequence[tuple[bool, str]] = (),
+    rename: Sequence[tuple[str, str]] = (),
+    cherry_pick: str | None = None,
     min_ratio: float = MIN_RATIO,
     min_ratio_row: float = MIN_RATIO,
     max_cost: int = MAX_COST,
     max_cost_row: int = MAX_COST,
     align_col_data: bool = False,
     shallow: bool = False,
-    mime: Optional[str] = None,
-    table_drop_cols: Optional[Sequence[str]] = None,
-    table_sort: Optional[Sequence[str]] = None,
+    mime: str | None = None,
+    table_drop_cols: Sequence[str] | None = None,
+    table_sort: Sequence[str] | None = None,
     sort: bool = False,
-    pool: Optional[int] = None,
-    fmt_progress: Optional[str] = None,
+    pool: int | None = None,
+    fmt_progress: str | None = None,
 ) -> Iterator[AnyDiff]:
     """
     Process anc compare to folders. Yields all diffs processed, even if they are equal.
@@ -125,10 +124,7 @@ def process_iter(
         table_drop_cols=table_drop_cols,
         table_sort=table_sort,
     )
-    if pool is not None:
-        ctx = Pool(processes=pool)
-    else:
-        ctx = nullcontext()
+    ctx = Pool(processes=pool) if pool is not None else nullcontext()
     with ctx as _pool:
         if pool is not None:
             if sort:
@@ -150,30 +146,30 @@ def process_iter(
 def process_print(
     a: Path,
     b: Path,
-    includes: Sequence[tuple[bool, str]] = tuple(),
-    rename: Sequence[tuple[str, str]] = tuple(),
-    cherry_pick: Optional[str] = None,
+    includes: Sequence[tuple[bool, str]] = (),
+    rename: Sequence[tuple[str, str]] = (),
+    cherry_pick: str | None = None,
     min_ratio: float = MIN_RATIO,
     min_ratio_row: float = MIN_RATIO,
     max_cost: int = MAX_COST,
     max_cost_row: int = MAX_COST,
     align_col_data: bool = False,
     shallow: bool = False,
-    mime: Optional[str] = None,
-    table_drop_cols: Optional[Sequence[str]] = None,
-    table_sort: Optional[Sequence[str]] = None,
+    mime: str | None = None,
+    table_drop_cols: Sequence[str] | None = None,
+    table_sort: Sequence[str] | None = None,
     sort: bool = False,
-    output_format: Optional[str] = None,
+    output_format: str | None = None,
     output_verbosity: int = 0,
     output_context_size: int = 2,
     output_text_line_split: bool = False,
     output_table_collapse_columns: bool = False,
     output_file=None,
-    output_term_width: Optional[int] = None,
-    pool: Optional[int] = None,
+    output_term_width: int | None = None,
+    pool: int | None = None,
     print_progress: bool = False,
     print_stats: bool = False,
-    print_stats_start_time: Optional[float] = None,
+    print_stats_start_time: float | None = None,
 ) -> bool:
     """
     Process anc compare to folders. Yields all diffs processed, even if they are equal.
@@ -327,9 +323,10 @@ def process_print(
         print("", flush=True)
     if stats:
         t = time.time()
-        print(
-            f"Diff complete in {t - (print_stats_start_time if print_stats_start_time is not None else t0):.1f}s"
+        elapsed = t - (
+            print_stats_start_time if print_stats_start_time is not None else t0
         )
+        print(f"Diff complete in {elapsed:.1f}s")
         if print_stats_start_time is not None:
             print(f"  method run time {t - t0:.1f}s")
         if stats:
@@ -340,7 +337,7 @@ def process_print(
     return any_diff
 
 
-def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """
     Parse CLI arguments.
 
@@ -428,7 +425,10 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
         "--group",
         action="append",
         metavar="PATTERN",
-        help="makes other (supported) arguments following this one to apply only to files matching PATTERN",
+        help=(
+            "makes other (supported) arguments following this one to apply only"
+            " to files matching PATTERN"
+        ),
         type=new_group,
     )
 
@@ -438,7 +438,10 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
         type=with_group(float),
         default=default(MIN_RATIO),
         metavar="[0..1]",
-        help="the minimal required similarity ratio value. Setting this to a higher value will make the algorithm stop earlier",
+        help=(
+            "the minimal required similarity ratio value. Setting this to a higher"
+            " value will make the algorithm stop earlier"
+        ),
         action="append",
     )
     algorithm_group.add_argument(
@@ -446,7 +449,8 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
         type=with_group(float),
         default=default(MIN_RATIO),
         metavar="[0..1]",
-        help="the minimal required similarity ratio value for individual lines/rows. Setting this to a higher value will make the algorithm stop earlier",
+        help="the minimal required similarity ratio value for individual lines/rows."
+        " Setting this to a higher value will make the algorithm stop earlier",
         action="append",
     )
     algorithm_group.add_argument(
@@ -454,7 +458,10 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
         type=with_group(int),
         default=default(MAX_COST),
         metavar="INT",
-        help="the maximal diff cost. Setting this to a lower value will make the algorithm stop earlier",
+        help=(
+            "the maximal diff cost. Setting this to a lower value will make the"
+            " algorithm stop earlier"
+        ),
         action="append",
     )
     algorithm_group.add_argument(
@@ -462,13 +469,17 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
         type=with_group(int),
         default=default(MAX_COST),
         metavar="INT",
-        help="the maximal diff cost for individual lines/rows. Setting this to a lower value will make the algorithm stop earlier",
+        help=(
+            "the maximal diff cost for individual lines/rows. Setting this to a lower"
+            " value will make the algorithm stop earlier"
+        ),
         action="append",
     )
     algorithm_group.add_argument(
         "--align-col-data",
         action="store_true",
-        help="align table columns by comparing their data instead of column names. May slow down comparison significantly",
+        help="align table columns by comparing their data instead of column names."
+        " May slow down comparison significantly",
     )  # TODO support groups
     algorithm_group.add_argument(
         "--shallow",
@@ -551,7 +562,7 @@ def run(args=None) -> bool:
         return process_print(
             a=args.a,
             b=args.b,
-            includes=args.includes or tuple(),
+            includes=args.includes or (),
             rename=args.rename,
             cherry_pick=args.cherry_pick,
             min_ratio=args.min_ratio,

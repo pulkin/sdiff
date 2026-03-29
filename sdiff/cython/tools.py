@@ -1,23 +1,23 @@
 import os
 import sys
 
+from Cython.Build.Cache import get_cython_cache_dir
+from Cython.Build.Dependencies import cythonize
+from Cython.Build.Inline import (
+    _get_build_extension,
+    _inline_key,
+    cython_inline,
+    load_dynamic,
+    strip_common_indent,
+)
 from setuptools import Extension
 
-from Cython.Build.Dependencies import cythonize
-from Cython.Build.Cache import get_cython_cache_dir
-
-from Cython.Build.Inline import (
-    cython_inline,
-    _inline_key,
-    strip_common_indent,
-    _get_build_extension,
-    load_dynamic,
-)
+_DEFAULT_LIB_DIR = os.path.join(get_cython_cache_dir(), "inline")
 
 
 def build_inline_module(
     code,
-    lib_dir=os.path.join(get_cython_cache_dir(), "inline"),
+    lib_dir=_DEFAULT_LIB_DIR,
     cython_include_dirs=None,
     cython_compiler_directives=None,
     force=False,

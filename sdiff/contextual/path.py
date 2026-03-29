@@ -1,22 +1,24 @@
+import filecmp
 import re
 from collections import defaultdict
-from pathlib import Path
-from typing import Any, Callable, TypeVar, Optional, Sequence, NamedTuple
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-import filecmp
 from functools import partial
-from collections.abc import Mapping
 from numbers import Number
+from pathlib import Path
+from typing import Any, NamedTuple, TypeVar
 from warnings import warn
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from .base import AnyDiff, profile, add_stats
-from .text import TextDiff, diff as _diff_text
-from .table import TableDiff, diff as _diff_table, Columns
 from ..numpy import align_inflate
 from ..sequence import MAX_COST, MIN_RATIO
+from .base import AnyDiff, add_stats, profile
+from .table import Columns, TableDiff
+from .table import diff as _diff_table
+from .text import TextDiff
+from .text import diff as _diff_text
 
 try:
     import magic
@@ -43,7 +45,7 @@ mime_dispatch: dict[str, DiffKernel] = {}
 @dataclass
 class PathDiff(AnyDiff):
     eq: bool
-    message: Optional[str] = None
+    message: str | None = None
     stats: Mapping[str, Number] = field(default_factory=dict, compare=False)
     """
     A diff indicating that two paths are exact same or different.
@@ -214,8 +216,8 @@ def diff_pd(
     max_cost: int = MAX_COST,
     max_cost_row: int = MAX_COST,
     align_col_data: bool = False,
-    table_drop_cols: Optional[Sequence[str]] = None,
-    table_sort: Optional[Sequence[str]] = None,
+    table_drop_cols: Sequence[str] | None = None,
+    table_sort: Sequence[str] | None = None,
 ) -> TableDiff:
     """
     Computes a table diff between two ``pandas.DataFrame``.
@@ -294,8 +296,8 @@ if pandas:
         max_cost: int = MAX_COST,
         max_cost_row: int = MAX_COST,
         align_col_data: bool = False,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
+        table_drop_cols: Sequence[str] | None = None,
+        table_sort: Sequence[str] | None = None,
     ) -> TableDiff:
         """
         Computes a table diff between two pandas-supported files with tables.
@@ -379,8 +381,8 @@ if pandas:
         max_cost: int = MAX_COST,
         max_cost_row: int = MAX_COST,
         align_col_data: bool = False,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
+        table_drop_cols: Sequence[str] | None = None,
+        table_sort: Sequence[str] | None = None,
     ) -> CompositeDiff:
         """
         Computes a table diff between two pandas-supported files with multiple tables.
@@ -475,7 +477,7 @@ if pandas:
 
 
 class GroupedValue(NamedTuple):
-    group: Optional[str]
+    group: str | None
     value: Any
 
 
@@ -494,18 +496,18 @@ class VariableOption(list):
 
 @profile("misc")
 def diff_path(
-    a: Optional[Path],
-    b: Optional[Path],
+    a: Path | None,
+    b: Path | None,
     name: str,
-    mime: Optional[str] = None,
+    mime: str | None = None,
     min_ratio: float = MIN_RATIO,
     min_ratio_row: float = MIN_RATIO,
     max_cost: int = MAX_COST,
     max_cost_row: int = MAX_COST,
     align_col_data: bool = False,
     shallow: bool = False,
-    table_drop_cols: Optional[Sequence[str]] = None,
-    table_sort: Optional[Sequence[str]] = None,
+    table_drop_cols: Sequence[str] | None = None,
+    table_sort: Sequence[str] | None = None,
     _replace_dot_name: bool = True,
 ) -> AnyDiff:
     """
@@ -593,7 +595,9 @@ def diff_path(
             mime = a_mime
         else:
             warn(
-                "mime not specified: either specify it or install python-magic for a detailed diff"
+                "mime not specified: either specify it or install python-magic"
+                " for a detailed diff",
+                stacklevel=2,
             )
     if mime is None:
         return PathDiff(

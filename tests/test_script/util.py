@@ -1,13 +1,11 @@
-from io import StringIO
-from subprocess import Popen, check_output
 import tarfile
-from tempfile import NamedTemporaryFile
-from operator import eq
+from io import StringIO
 from multiprocessing import set_start_method
+from operator import eq
+from subprocess import Popen, check_output
+from tempfile import NamedTemporaryFile
 
-from sdiff.cli.processor import process_print
-from sdiff.cli.processor import run
-
+from sdiff.cli.processor import process_print, run
 
 set_start_method("forkserver")
 
