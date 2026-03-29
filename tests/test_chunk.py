@@ -9,32 +9,39 @@ def test_diff():
         diffs=[
             Chunk("hello", "hi", False),
             Chunk("world", "world", True),
-        ]
+        ],
     )
     assert diff.get_a() == "helloworld"
     assert diff.get_b() == "hiworld"
     assert diff.get_inflated_ab() == (list("hellohiworld"), list("hellohiworld"))
     assert diff.with_data(list(range(10)), list(range(10, 17))) == Diff(
-        ratio=10./17,
+        ratio=10.0 / 17,
         diffs=[
             Chunk(data_a=[0, 1, 2, 3, 4], data_b=[10, 11], eq=False),
             Chunk(data_a=[5, 6, 7, 8, 9], data_b=[12, 13, 14, 15, 16], eq=True),
-        ]
+        ],
     )
 
 
 def test_important():
-    diff_345 = Diff(ratio=2 / 3, diffs=[
-        Chunk(data_a=[3], data_b=[3], eq=True),
-        Chunk(data_a=[4], data_b=[9], eq=False),
-        Chunk(data_a=[5], data_b=[5], eq=True),
-    ])
+    diff_345 = Diff(
+        ratio=2 / 3,
+        diffs=[
+            Chunk(data_a=[3], data_b=[3], eq=True),
+            Chunk(data_a=[4], data_b=[9], eq=False),
+            Chunk(data_a=[5], data_b=[5], eq=True),
+        ],
+    )
     chunks = [
         Chunk(data_a=[[0, 1, 2]], data_b=[[0, 1, 2]], eq=True),
         Chunk(data_a=[[3, 4, 5]], data_b=[[3, 9, 5]], eq=True, details=[diff_345]),
         Chunk(data_a=[[6, 7, 8]], data_b=[[6, 7, 8]], eq=True),
         Chunk(data_a=[[9, 10, 11]], data_b=[[19, 20, 21]], eq=False),
-        Chunk(data_a=[[12, 13, 14], [15, 16, 17]], data_b=[[12, 13, 14], [15, 16, 17]], eq=True),
+        Chunk(
+            data_a=[[12, 13, 14], [15, 16, 17]],
+            data_b=[[12, 13, 14], [15, 16, 17]],
+            eq=True,
+        ),
     ]
     diff = Diff(ratio=0, diffs=chunks)
     assert list(iter_chunks_important(diff)) == [

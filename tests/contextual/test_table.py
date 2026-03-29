@@ -82,7 +82,9 @@ def test_missing_0(monkeypatch, a):
             a=a,
             b=b,
             eq=eq,
-            row_diff_sig=Signature((ChunkSignature.delta(1, 0), ChunkSignature.aligned(9))),
+            row_diff_sig=Signature(
+                (ChunkSignature.delta(1, 0), ChunkSignature.aligned(9))
+            ),
             col_diff_sig=Signature.aligned(10),
         ),
         columns=None,
@@ -104,7 +106,9 @@ def test_missing_1(monkeypatch, a):
             a=a,
             b=b,
             eq=eq,
-            row_diff_sig=Signature((ChunkSignature.aligned(9), ChunkSignature.delta(1, 0))),
+            row_diff_sig=Signature(
+                (ChunkSignature.aligned(9), ChunkSignature.delta(1, 0))
+            ),
             col_diff_sig=Signature.aligned(10),
         ),
         columns=None,
@@ -126,11 +130,13 @@ def test_missing_2(monkeypatch, a):
             a=a,
             b=b,
             eq=eq,
-            row_diff_sig=Signature((
-                ChunkSignature.aligned(3),
-                ChunkSignature.delta(1, 0),
-                ChunkSignature.aligned(6),
-            )),
+            row_diff_sig=Signature(
+                (
+                    ChunkSignature.aligned(3),
+                    ChunkSignature.delta(1, 0),
+                    ChunkSignature.aligned(6),
+                )
+            ),
             col_diff_sig=Signature.aligned(10),
         ),
         columns=None,

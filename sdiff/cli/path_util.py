@@ -61,6 +61,7 @@ class RegexMatchRule(MatchRule):
     pattern_str
         The representation of the regex pattern.
     """
+
     def __post_init__(self):
         object.__setattr__(self, "pattern_str", self.pattern_str or self.pattern)
 
@@ -107,10 +108,10 @@ accept_folders = glob_rule(True, "*/")
 
 
 def iterdir(
-        node: Path,
-        root: Optional[Path] = None,
-        rules: Sequence[MatchRule] = (accept_all,),
-        sort: bool = False,
+    node: Path,
+    root: Optional[Path] = None,
+    rules: Sequence[MatchRule] = (accept_all,),
+    sort: bool = False,
 ) -> Iterator[tuple[Path, MatchRule, str]]:
     """
     Recursive iteration over path tree using rsymc-like rules.
@@ -166,12 +167,12 @@ def iterdir(
 
 
 def iter_match(
-        a: Path,
-        b: Path,
-        transform: Optional[Callable[[str], str]] = None,
-        rules: Sequence[MatchRule] = (accept_all,),
-        sort: bool = False,
-        cherry_pick: Optional[str] = None,
+    a: Path,
+    b: Path,
+    transform: Optional[Callable[[str], str]] = None,
+    rules: Sequence[MatchRule] = (accept_all,),
+    sort: bool = False,
+    cherry_pick: Optional[str] = None,
 ) -> Iterator[tuple[Optional[Path], Optional[Path], str]]:
     """
     Iterates two path trees and matches the nodes.
@@ -199,21 +200,24 @@ def iter_match(
     key
         A key for both paths.
     """
+
     def _collect(_path: Path, _name: str) -> dict[str, Path]:
         _result = {}
         logging.info("collecting %s ...", _name)
         for _child, _rule, _key in iterdir(
-                node=_path,
-                root=_path,
-                rules=rules,
-                sort=sort,
+            node=_path,
+            root=_path,
+            rules=rules,
+            sort=sort,
         ):
             if _child.is_file():
                 logging.debug("matched %s in %s: %s", _child, _name, _rule)
                 if transform is not None:
                     _key = transform(_key)
                 if _key in _result:
-                    logging.warning("multiple paths transform into the same key %s", _key)
+                    logging.warning(
+                        "multiple paths transform into the same key %s", _key
+                    )
                     logging.warning("  path: %s", _child)
                 _result[_key] = _child
         return _result

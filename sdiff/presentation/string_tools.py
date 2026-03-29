@@ -6,7 +6,8 @@ def escape(s: str) -> str:
     return repr(s)[1:-1]
 
 
-re_tformat = re.compile(r'''
+re_tformat = re.compile(
+    r"""
     \x1B  # ESC
     (?:   # 7-bit C1 Fe (except CSI)
         [@-Z\\-_]
@@ -16,7 +17,9 @@ re_tformat = re.compile(r'''
         [ -/]*  # Intermediate bytes
         [@-~]   # Final byte
     )
-''', re.VERBOSE)  # https://stackoverflow.com/questions/14693701/how-can-i-remove-the-ansi-escape-sequences-from-a-string-in-python
+""",
+    re.VERBOSE,
+)  # https://stackoverflow.com/questions/14693701/how-can-i-remove-the-ansi-escape-sequences-from-a-string-in-python
 
 
 def iter_escape(s: str) -> Iterator[tuple[str, bool]]:
@@ -84,7 +87,7 @@ def align(s: str, n: int, elli: str = "…", fill: str = " ", justify="left") ->
     """
     n_elli = n - visible_len(elli)
     if n_elli < 0:
-        raise ValueError(f"ellipsis is too long")
+        raise ValueError("ellipsis is too long")
 
     pos = 0
 

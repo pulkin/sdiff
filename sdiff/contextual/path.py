@@ -20,7 +20,10 @@ from ..sequence import MAX_COST, MIN_RATIO
 
 try:
     import magic
-    magic_guess_custom = magic.Magic(mime=True, magic_file=str(Path(__file__).parent / "magic"))
+
+    magic_guess_custom = magic.Magic(
+        mime=True, magic_file=str(Path(__file__).parent / "magic")
+    )
 except ImportError:
     magic = magic_guess_custom = None
 
@@ -139,23 +142,25 @@ def mime_kernel(*args: str) -> Callable[[T], T]:
     args
         MIME strings.
     """
+
     def _decorate(kernel: T) -> T:
         for i in args:
             mime_dispatch[i] = kernel
         return kernel
+
     return _decorate
 
 
 @mime_kernel("text/plain", "text")
 @profile("text fetch")
 def diff_text(
-        a: Path,
-        b: Path,
-        name: str,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
+    a: Path,
+    b: Path,
+    name: str,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
 ) -> TextDiff:
     """
     Computes a text diff between two files.
@@ -188,22 +193,29 @@ def diff_text(
     The text diff.
     """
     with a.open("r") as fa, b.open("r") as fb:
-        return _diff_text(list(fa), list(fb), name, min_ratio=min_ratio, min_ratio_row=min_ratio_row,
-                          max_cost=max_cost, max_cost_row=max_cost_row)
+        return _diff_text(
+            list(fa),
+            list(fb),
+            name,
+            min_ratio=min_ratio,
+            min_ratio_row=min_ratio_row,
+            max_cost=max_cost,
+            max_cost_row=max_cost_row,
+        )
 
 
 @profile("pandas preprocessing")
 def diff_pd(
-        a,
-        b,
-        name: str,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        align_col_data: bool = False,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
+    a,
+    b,
+    name: str,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    align_col_data: bool = False,
+    table_drop_cols: Optional[Sequence[str]] = None,
+    table_sort: Optional[Sequence[str]] = None,
 ) -> TableDiff:
     """
     Computes a table diff between two ``pandas.DataFrame``.
@@ -250,29 +262,40 @@ def diff_pd(
                 df.drop(columns=table_drop_cols, inplace=True, errors="ignore")
             if table_sort is not None:
                 df.sort_values(by=table_sort or list(df.columns), inplace=True)
-    result = _diff_table(a=a, b=b, name=name, min_ratio=min_ratio, min_ratio_row=min_ratio_row, max_cost=max_cost,
-                         max_cost_row=max_cost_row, columns=None if align_col_data else "columns")
+    result = _diff_table(
+        a=a,
+        b=b,
+        name=name,
+        min_ratio=min_ratio,
+        min_ratio_row=min_ratio_row,
+        max_cost=max_cost,
+        max_cost_row=max_cost_row,
+        columns=None if align_col_data else "columns",
+    )
     if align_col_data:  # columns were discarded in the diff; add them back
-        cols_a, cols_b = align_inflate(np.array(a.columns), np.array(b.columns), "", result.data.col_diff_sig, 0)
+        cols_a, cols_b = align_inflate(
+            np.array(a.columns), np.array(b.columns), "", result.data.col_diff_sig, 0
+        )
         columns = Columns(list(cols_a), list(cols_b))
         result.columns = columns
     return result
 
 
 if pandas:
+
     @profile("pandas parsing")
     def diff_pd_simple(
-            reader: Callable[[Path], pd.DataFrame],
-            a: Path,
-            b: Path,
-            name: str,
-            min_ratio: float = MIN_RATIO,
-            min_ratio_row: float = MIN_RATIO,
-            max_cost: int = MAX_COST,
-            max_cost_row: int = MAX_COST,
-            align_col_data: bool = False,
-            table_drop_cols: Optional[Sequence[str]] = None,
-            table_sort: Optional[Sequence[str]] = None,
+        reader: Callable[[Path], pd.DataFrame],
+        a: Path,
+        b: Path,
+        name: str,
+        min_ratio: float = MIN_RATIO,
+        min_ratio_row: float = MIN_RATIO,
+        max_cost: int = MAX_COST,
+        max_cost_row: int = MAX_COST,
+        align_col_data: bool = False,
+        table_drop_cols: Optional[Sequence[str]] = None,
+        table_sort: Optional[Sequence[str]] = None,
     ) -> TableDiff:
         """
         Computes a table diff between two pandas-supported files with tables.
@@ -326,25 +349,38 @@ if pandas:
             table_sort=table_sort,
         )
 
-
-    diff_pd_csv = mime_kernel("text/csv", "application/csv", "csv")(partial(diff_pd_simple, partial(pd.read_csv, dtype=str, keep_default_na=False, na_filter=False, encoding_errors="replace")))
-    diff_pd_feather = mime_kernel("application/vnd.apache.arrow.file")(partial(diff_pd_simple, pd.read_feather))
-    diff_pd_parquet = mime_kernel("application/vnd.apache.parquet")(partial(diff_pd_simple, pd.read_parquet))
-
+    diff_pd_csv = mime_kernel("text/csv", "application/csv", "csv")(
+        partial(
+            diff_pd_simple,
+            partial(
+                pd.read_csv,
+                dtype=str,
+                keep_default_na=False,
+                na_filter=False,
+                encoding_errors="replace",
+            ),
+        )
+    )
+    diff_pd_feather = mime_kernel("application/vnd.apache.arrow.file")(
+        partial(diff_pd_simple, pd.read_feather)
+    )
+    diff_pd_parquet = mime_kernel("application/vnd.apache.parquet")(
+        partial(diff_pd_simple, pd.read_parquet)
+    )
 
     @profile("pandas parsing")
     def diff_pd_dict(
-            reader: Callable[[Path], dict[str, pd.DataFrame]],
-            a: Path,
-            b: Path,
-            name: str,
-            min_ratio: float = MIN_RATIO,
-            min_ratio_row: float = MIN_RATIO,
-            max_cost: int = MAX_COST,
-            max_cost_row: int = MAX_COST,
-            align_col_data: bool = False,
-            table_drop_cols: Optional[Sequence[str]] = None,
-            table_sort: Optional[Sequence[str]] = None,
+        reader: Callable[[Path], dict[str, pd.DataFrame]],
+        a: Path,
+        b: Path,
+        name: str,
+        min_ratio: float = MIN_RATIO,
+        min_ratio_row: float = MIN_RATIO,
+        max_cost: int = MAX_COST,
+        max_cost_row: int = MAX_COST,
+        align_col_data: bool = False,
+        table_drop_cols: Optional[Sequence[str]] = None,
+        table_sort: Optional[Sequence[str]] = None,
     ) -> CompositeDiff:
         """
         Computes a table diff between two pandas-supported files with multiple tables.
@@ -420,8 +456,22 @@ if pandas:
             add_stats(d.stats, stats)
         return CompositeDiff(name, result, stats=stats)
 
-
-    diff_pd_excel = mime_kernel("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "excel")(partial(diff_pd_dict, partial(pd.read_excel, dtype=str, keep_default_na=False, na_filter=False, sheet_name=None)))
+    diff_pd_excel = mime_kernel(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "excel",
+    )(
+        partial(
+            diff_pd_dict,
+            partial(
+                pd.read_excel,
+                dtype=str,
+                keep_default_na=False,
+                na_filter=False,
+                sheet_name=None,
+            ),
+        )
+    )
 
 
 class GroupedValue(NamedTuple):
@@ -444,19 +494,19 @@ class VariableOption(list):
 
 @profile("misc")
 def diff_path(
-        a: Optional[Path],
-        b: Optional[Path],
-        name: str,
-        mime: Optional[str] = None,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        align_col_data: bool = False,
-        shallow: bool = False,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
-        _replace_dot_name: bool = True,
+    a: Optional[Path],
+    b: Optional[Path],
+    name: str,
+    mime: Optional[str] = None,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    align_col_data: bool = False,
+    shallow: bool = False,
+    table_drop_cols: Optional[Sequence[str]] = None,
+    table_sort: Optional[Sequence[str]] = None,
+    _replace_dot_name: bool = True,
 ) -> AnyDiff:
     """
     Computes a diff between two files based on their (common) MIME.
@@ -508,6 +558,7 @@ def diff_path(
             name = a.name
         else:
             name = b.name
+
     def _get_variable_option_val(x):
         if isinstance(x, VariableOption):
             return x.get_value(name)
@@ -530,7 +581,9 @@ def diff_path(
     if filecmp.cmp(a, b, shallow=False):
         return PathDiff(name, eq=True, message="files are binary equal")
     if shallow:
-        return PathDiff(name, eq=False, message="files are not equal (shallow comparison)")
+        return PathDiff(
+            name, eq=False, message="files are not equal (shallow comparison)"
+        )
     if mime is None:
         if magic is not None:
             a_mime = magic_guess_custom.from_file(str(a))
@@ -539,9 +592,15 @@ def diff_path(
                 return MIMEDiff(name, a_mime, b_mime)
             mime = a_mime
         else:
-            warn("mime not specified: either specify it or install python-magic for a detailed diff")
+            warn(
+                "mime not specified: either specify it or install python-magic for a detailed diff"
+            )
     if mime is None:
-        return PathDiff(name, eq=False, message=f"failed to determine MIME; tried libmagic: {magic is not None}")
+        return PathDiff(
+            name,
+            eq=False,
+            message=f"failed to determine MIME; tried libmagic: {magic is not None}",
+        )
     try:
         kernel = mime_dispatch[mime]
     except KeyError:

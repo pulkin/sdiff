@@ -32,7 +32,7 @@ class Columns:
     """
 
     def is_eq(self) -> bool:
-        return all(i == j for i, j  in zip(self.a, self.b))
+        return all(i == j for i, j in zip(self.a, self.b))
 
 
 @dataclass
@@ -54,23 +54,26 @@ class TableDiff(AnyDiff):
     stats
         Stats associated with this diff.
     """
+
     def is_eq(self) -> bool:
-        return bool(self.data.eq.all()) and (self.columns is None or self.columns.is_eq())
+        return bool(self.data.eq.all()) and (
+            self.columns is None or self.columns.is_eq()
+        )
 
 
 @profile("2D comparison")
 def diff(
-        a,
-        b,
-        name: str,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        fill="",
-        fill_col_names="",
-        columns: Union[Signature, str, tuple[list[str], list[str]], None] = "columns",
-        dtype: type = object,
+    a,
+    b,
+    name: str,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    fill="",
+    fill_col_names="",
+    columns: Union[Signature, str, tuple[list[str], list[str]], None] = "columns",
+    dtype: type = object,
 ) -> TableDiff:
     """
     Computes a diff between tables.
@@ -153,11 +156,15 @@ def diff(
     return TableDiff(
         name=name,
         data=np_diff,
-        columns=Columns(*align_inflate(
-            a=np.array(cols_a, dtype=str),
-            b=np.array(cols_b, dtype=str),
-            val=fill_col_names,
-            sig=columns,
-            dim=0,
-        )) if cols_a is not None else None,
+        columns=Columns(
+            *align_inflate(
+                a=np.array(cols_a, dtype=str),
+                b=np.array(cols_b, dtype=str),
+                val=fill_col_names,
+                sig=columns,
+                dim=0,
+            )
+        )
+        if cols_a is not None
+        else None,
     )

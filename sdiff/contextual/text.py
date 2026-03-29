@@ -30,14 +30,14 @@ class TextDiff(AnyDiff):
 
 @profile("text comparison")
 def diff(
-        a: Sequence[str],
-        b: Sequence[str],
-        name: str,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        coarse: int = 4,
+    a: Sequence[str],
+    b: Sequence[str],
+    name: str,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    coarse: int = 4,
 ) -> TextDiff:
     """
     Computes a diff between two texts.
@@ -90,13 +90,21 @@ def diff(
                         if last.eq:
                             a = last.data_a
                             b = last.data_b
-                            last = replace(last, data_a=a.rstrip("\n"), data_b=b.rstrip("\n"))
+                            last = replace(
+                                last, data_a=a.rstrip("\n"), data_b=b.rstrip("\n")
+                            )
                             if last.data_a != a:
-                                post_last = Chunk(eq=True, data_a=a[len(last.data_a):], data_b=b[len(last.data_b):])
+                                post_last = Chunk(
+                                    eq=True,
+                                    data_a=a[len(last.data_a) :],
+                                    data_b=b[len(last.data_b) :],
+                                )
                         j = replace(j, diffs=j.diffs[:-1] + [last])
                     coarse_diff = j.get_coarse(coarse)
                     if post_last is not None:
-                        coarse_diff = replace(coarse_diff, diffs=coarse_diff.diffs + [post_last])
+                        coarse_diff = replace(
+                            coarse_diff, diffs=coarse_diff.diffs + [post_last]
+                        )
                     new_details.append(coarse_diff)
                 new_diffs.append(replace(i, details=new_details))
             else:

@@ -1,7 +1,7 @@
 import itertools
 from itertools import groupby
 from typing import Any, Optional, Union
-from collections.abc import Callable, Iterable, Sequence, Generator
+from collections.abc import Callable, Sequence, Generator
 from functools import reduce, cached_property
 from operator import add
 from dataclasses import dataclass, field
@@ -24,6 +24,7 @@ class ChunkSignature:
         A flag indicating whether the two are considered
         equal.
     """
+
     size_a: int
     size_b: int
     eq: bool
@@ -61,6 +62,7 @@ class Signature:
     parts
         Signature constituents.
     """
+
     parts: Sequence[ChunkSignature]
 
     def __len__(self):
@@ -69,6 +71,7 @@ class Signature:
     @property
     def cost(self) -> int:
         return sum(i.cost for i in self.parts)
+
     @property
     def max_cost(self) -> int:
         return sum(i.max_cost for i in self.parts)
@@ -102,18 +105,19 @@ class Chunk:
         equal or a list of diffs specifying in which way
         pairs of items from data_a and data_b are different.
     """
+
     data_a: Sequence[Any]
     data_b: Sequence[Any]
     eq: bool
     details: Optional[Sequence[Any]] = None
 
     def to_string(
-            self,
-            prefix: str = "",
-            uri_a: str = "a",
-            uri_b: str = "b",
-            offset_a: int = 0,
-            offset_b: int = 0,
+        self,
+        prefix: str = "",
+        uri_a: str = "a",
+        uri_b: str = "b",
+        offset_a: int = 0,
+        offset_b: int = 0,
     ) -> str:
         eq = self.eq
         data_a = self.data_a
@@ -135,11 +139,13 @@ class Chunk:
         # a sequence of aligned elements with some differences
         result = [base]
         for _i, (_eq, _a, _b) in enumerate(zip(eq, data_a, data_b)):
-            result.append(_eq.to_string(
-                prefix=prefix + "··",
-                uri_a=f"{uri_a}[{offset_a + _i}]",
-                uri_b=f"{uri_b}[{offset_b + _i}]",
-            ))
+            result.append(
+                _eq.to_string(
+                    prefix=prefix + "··",
+                    uri_a=f"{uri_a}[{offset_a + _i}]",
+                    uri_b=f"{uri_b}[{offset_b + _i}]",
+                )
+            )
         return "\n".join(result)
 
     @cached_property
@@ -219,7 +225,9 @@ def iter_chunks_coarse(diff: "Diff", consume_size: int) -> Generator[Chunk, None
         yield reduce(add, buffer)
 
 
-def iter_chunks_verbose(diff: "Diff") -> Generator[tuple[bool, bool, Chunk], None, None]:
+def iter_chunks_verbose(
+    diff: "Diff",
+) -> Generator[tuple[bool, bool, Chunk], None, None]:
     """
     Iterates over diff chunks and yields them together with two booleans: "equal" and "exact".
     The "equal" boolean has the same meaning as `Chunk.eq`: it tells whether the sub-sequences are aligned.
@@ -234,6 +242,7 @@ def iter_chunks_verbose(diff: "Diff") -> Generator[tuple[bool, bool, Chunk], Non
     ------
     Two boolean flags and a Chunk.
     """
+
     def _key(_sub_diff):
         if isinstance(_sub_diff, Diff):
             return _sub_diff.ratio == 1
@@ -249,11 +258,22 @@ def iter_chunks_verbose(diff: "Diff") -> Generator[tuple[bool, bool, Chunk], Non
             for is_exact, details in groupby(chunk.details, key=_key):
                 details = list(details)
                 j = len(details) + i
-                yield chunk.eq, is_exact, Chunk(data_a=chunk.data_a[i:j], data_b=chunk.data_b[i:j], eq=chunk.eq, details=details)
+                yield (
+                    chunk.eq,
+                    is_exact,
+                    Chunk(
+                        data_a=chunk.data_a[i:j],
+                        data_b=chunk.data_b[i:j],
+                        eq=chunk.eq,
+                        details=details,
+                    ),
+                )
                 i = j
 
 
-def iter_chunks_important(diff: "Diff", context_size: int = 0) -> Generator[Union["Item", int], None, None]:
+def iter_chunks_important(
+    diff: "Diff", context_size: int = 0
+) -> Generator[Union["Item", int], None, None]:
     """
     Iterates over non-equal item pairs.
 
@@ -269,6 +289,7 @@ def iter_chunks_important(diff: "Diff", context_size: int = 0) -> Generator[Unio
     ------
     Diff items or integers specifying the number of skipped item pairs.
     """
+
     def _dummy():
         return
         yield
@@ -297,16 +318,25 @@ def iter_chunks_important(diff: "Diff", context_size: int = 0) -> Generator[Unio
     counter_a = counter_b = 0
 
     for i_chunk, (is_eq, is_exact, chunk) in enumerate(iter_chunks_verbose(diff)):
-
         if is_eq:
             if not is_exact:
                 yield from context_tail
-                for i, (a, b, diff) in enumerate(zip(chunk.data_a, chunk.data_b, chunk.details)):
-                    yield Item(a=a, b=b, ix_a=counter_a + i, ix_b=counter_b + i, diff=diff)
+                for i, (a, b, diff) in enumerate(
+                    zip(chunk.data_a, chunk.data_b, chunk.details)
+                ):
+                    yield Item(
+                        a=a, b=b, ix_a=counter_a + i, ix_b=counter_b + i, diff=diff
+                    )
             else:  # chunks are equal: take care of context
                 if i_chunk:  # this is NOT the beginning of text: yield context
                     yield from _head(chunk.data_a, counter_a, chunk.data_b, counter_b)
-                context_tail = _tail(chunk.data_a, counter_a, chunk.data_b, counter_b, bool(i_chunk) * context_size)
+                context_tail = _tail(
+                    chunk.data_a,
+                    counter_a,
+                    chunk.data_b,
+                    counter_b,
+                    bool(i_chunk) * context_size,
+                )
         else:  # chunks are not equal: yield them all
             yield from context_tail
             for i, a in enumerate(chunk.data_a, counter_a):
@@ -340,9 +370,12 @@ class Diff:
     diffs
         A list of diff chunks.
     """
+
     ratio: float
     diffs: Optional[list[Chunk]]
-    protocol: Optional[ComparisonBackend] = field(default=None, repr=False, hash=False, compare=False)
+    protocol: Optional[ComparisonBackend] = field(
+        default=None, repr=False, hash=False, compare=False
+    )
 
     @classmethod
     def from_signature(cls, sig: Signature, data_a, data_b) -> "Diff":
@@ -364,11 +397,13 @@ class Diff:
         diffs = []
         offset_a = offset_b = 0
         for part in sig.parts:
-            diffs.append(Chunk(
-                data_a=data_a[offset_a:(offset_a := offset_a + part.size_a)],
-                data_b=data_b[offset_b:(offset_b := offset_b + part.size_b)],
-                eq=part.eq,
-            ))
+            diffs.append(
+                Chunk(
+                    data_a=data_a[offset_a : (offset_a := offset_a + part.size_a)],
+                    data_b=data_b[offset_b : (offset_b := offset_b + part.size_b)],
+                    eq=part.eq,
+                )
+            )
         if offset_a != len(data_a):
             raise ValueError(f"{len(data_a)=}; expected: {offset_a}")
         if offset_b != len(data_b):
@@ -402,9 +437,10 @@ class Diff:
             raise ValueError("no diff data")
         return reduce(add, (i.data_b for i in self.diffs))
 
-    def get_inflated_ab(self,
-            hook_a_b: Optional[CrossHookType] = None,
-            hook_b_a: Optional[CrossHookType] = None,
+    def get_inflated_ab(
+        self,
+        hook_a_b: Optional[CrossHookType] = None,
+        hook_b_a: Optional[CrossHookType] = None,
     ) -> tuple[list[Any], list[Any]]:
         """
         Computes a pair of aligned sequences by inflating sequence `a` to include the values from `b` and vice versa.
@@ -419,8 +455,16 @@ class Diff:
         for chunk in self.diffs:
             a.append(chunk.data_a)
             if not chunk.eq:
-                a.append(chunk.data_b if hook_a_b is None else type(chunk.data_a)(map(hook_a_b, chunk.data_b)))
-                b.append(chunk.data_a if hook_b_a is None else type(chunk.data_b)(map(hook_b_a, chunk.data_a)))
+                a.append(
+                    chunk.data_b
+                    if hook_a_b is None
+                    else type(chunk.data_a)(map(hook_a_b, chunk.data_b))
+                )
+                b.append(
+                    chunk.data_a
+                    if hook_b_a is None
+                    else type(chunk.data_b)(map(hook_b_a, chunk.data_a))
+                )
             b.append(chunk.data_b)
 
         return list(reduce(add, a)), list(reduce(add, b))
@@ -449,13 +493,15 @@ class Diff:
             result = [preamble]
             offset_a = offset_b = 0
             for i in self.diffs:
-                result.append(i.to_string(
-                    prefix=prefix + "··",
-                    uri_a=uri_a,
-                    uri_b=uri_b,
-                    offset_a=offset_a,
-                    offset_b=offset_b,
-                ))
+                result.append(
+                    i.to_string(
+                        prefix=prefix + "··",
+                        uri_a=uri_a,
+                        uri_b=uri_b,
+                        offset_a=offset_a,
+                        offset_b=offset_b,
+                    )
+                )
                 offset_a += len(i.data_a)
                 offset_b += len(i.data_b)
 
@@ -480,7 +526,9 @@ class Diff:
         -------
         The resulting diff.
         """
-        return Diff(ratio=self.ratio, diffs=list(iter_chunks_coarse(self, consume_size)))
+        return Diff(
+            ratio=self.ratio, diffs=list(iter_chunks_coarse(self, consume_size))
+        )
 
 
 @dataclass(frozen=True)
@@ -499,6 +547,7 @@ class Item:
     diff
         An optional diff between a and b.
     """
+
     a: Any
     b: Any
     ix_a: Optional[int]

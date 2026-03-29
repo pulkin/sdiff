@@ -10,7 +10,7 @@ from sdiff.cython.tools import build_inline_module
 from sdiff.protocols import wrap
 from sdiff.sequence import canonize
 
-#TODO: refactor
+# TODO: refactor
 ComparisonCallBackend = type(wrap(None))
 ComparisonStrBackend = type(wrap(("abc", "def")))
 MapBackend = build_inline_module(
@@ -37,7 +37,7 @@ def test_empty_full(driver, n, m, v):
     def graph(i: int, j: int) -> float:
         return v
 
-    result = array.array('b', b'\xFF' * (n + m))
+    result = array.array("b", b"\xff" * (n + m))
     cost = driver(n, m, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     if v == 0:
@@ -53,7 +53,7 @@ def test_impl_quantized_1(driver):
     def graph(i: int, j: int) -> float:
         return i == 2 * j
 
-    result = array.array('b', b'\xFF' * 11)
+    result = array.array("b", b"\xff" * 11)
     cost = driver(7, 4, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 3
@@ -66,7 +66,7 @@ def test_impl_dummy_1(driver):
     def graph(i: int, j: int) -> float:
         return i == j and i % 2
 
-    result = array.array('b', b'\xFF' * 11)
+    result = array.array("b", b"\xff" * 11)
     cost = driver(7, 4, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 7
@@ -79,7 +79,7 @@ def test_impl_dummy_2(driver):
     def graph(i: int, j: int) -> float:
         return i == j and i % 2
 
-    result = array.array('b', b'\xFF' * 11)
+    result = array.array("b", b"\xff" * 11)
     cost = driver(4, 7, ComparisonCallBackend(graph), result)
     assert compute_cost(result) == cost
     assert cost == 7
@@ -87,16 +87,23 @@ def test_impl_dummy_2(driver):
     assert list(result) == [1, 2, 3, 0, 1, 2, 3, 0, 2, 2, 2]
 
 
-@pytest.mark.parametrize("max_cost, expected_cost, expected", [
-    (2, 7, [3, 0] + [1] * 5 + [2] * 2 + [3, 0]),
-    (3, 3.0, [3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0]),  # 3 is the the breakpoint for this case
-])
+@pytest.mark.parametrize(
+    "max_cost, expected_cost, expected",
+    [
+        (2, 7, [3, 0] + [1] * 5 + [2] * 2 + [3, 0]),
+        (
+            3,
+            3.0,
+            [3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0],
+        ),  # 3 is the the breakpoint for this case
+    ],
+)
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_max_cost_quantized(driver, max_cost, expected_cost, expected):
     def graph(i: int, j: int) -> float:
         return i == 2 * j
 
-    result = array.array('b', b'\xFF' * 11)
+    result = array.array("b", b"\xff" * 11)
     cost = driver(7, 4, ComparisonCallBackend(graph), result, max_cost=max_cost)
     assert compute_cost(result) == cost
     assert cost == expected_cost
@@ -106,15 +113,24 @@ def test_max_cost_quantized(driver, max_cost, expected_cost, expected):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_eq_only(driver):
-    result = array.array('b', b'\xFF' * 18)
-    with pytest.warns(UserWarning, match="the 'out' argument is ignored for eq_only=True"):
-        cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "aaaxxxccc"), result, eq_only=True, max_cost=8)
+    result = array.array("b", b"\xff" * 18)
+    with pytest.warns(
+        UserWarning, match="the 'out' argument is ignored for eq_only=True"
+    ):
+        cost = driver(
+            9,
+            9,
+            ComparisonStrBackend("aaabbbccc", "aaaxxxccc"),
+            result,
+            eq_only=True,
+            max_cost=8,
+        )
     assert cost == 6
 
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_str_non_periodic(driver):
-    result = array.array('b', b'\xFF' * 18)
+    result = array.array("b", b"\xff" * 18)
     cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "dddbbbeee"), result)
     assert compute_cost(result) == cost
     assert cost == 12
@@ -124,7 +140,7 @@ def test_str_non_periodic(driver):
 
 @pytest.mark.parametrize("driver", [search_graph_recursive, csearch_graph_recursive])
 def test_str_non_periodic_2(driver):
-    result = array.array('b', b'\xFF' * 18)
+    result = array.array("b", b"\xff" * 18)
     cost = driver(9, 9, ComparisonStrBackend("aaabbbccc", "aaadddccc"), result)
     assert compute_cost(result) == cost
     assert cost == 6
@@ -175,7 +191,7 @@ def test_fuzz(driver, rtn_diff):
         _map = np.random.randint(0, 99, size=(n, m)) < f
 
         if rtn_diff:
-            result = array.array('b', b'\xFF' * (n + m))
+            result = array.array("b", b"\xff" * (n + m))
         else:
             result = None
         cost = driver(n, m, MapBackend(_map), result)

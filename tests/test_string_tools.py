@@ -3,16 +3,21 @@ from sdiff.presentation.string_tools import visible_len, align, iter_escape
 import pytest
 
 
-hello = "\033[30mhello\033[m"
-elli = "...\033[m"
+pure = "a very long colored string"
+hello = f"\033[30m{pure}\033[m"
+elli = "..."
 
 
 def test_iter_escape():
-    assert list(iter_escape(hello)) == [("\033[30m", False), ("hello", True), ("\033[m", False)]
+    assert list(iter_escape(hello)) == [
+        ("\033[30m", False),
+        (pure, True),
+        ("\033[m", False),
+    ]
 
 
 def test_vlen():
-    assert visible_len(hello) == 5
+    assert visible_len(hello) == len(pure)
 
 
 @pytest.mark.parametrize("n", list(range(3)))
@@ -22,14 +27,13 @@ def test_align_truncate_short(n):
 
 
 @pytest.mark.parametrize("n", list(range(4, 8)))
-def test_align_truncate(n):
+def test_align_truncate_0(n):
     result = align(hello, n, elli=elli)
-    assert result == "\033[30m" + "hello"[:n - 3] + "\033[m" + elli
+    assert result == "\033[30m" + pure[: n - len(elli)] + elli
     assert visible_len(result) == n
 
 
-@pytest.mark.parametrize("n", list(range(9, 10)))
-def test_align_truncate(n):
+def test_align_truncate_1(n=30):
     result = align(hello, n, elli=elli)
-    assert result == hello + " " * (n - 5)
+    assert result == hello + " " * (n - len(pure))
     assert visible_len(result) == n

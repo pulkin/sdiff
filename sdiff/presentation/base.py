@@ -28,7 +28,9 @@ class TableHline(str):
 @dataclass
 class Table:
     column_mask: Sequence[bool]
-    data: list[Union[tuple[str, ...], TableBreak, TableHline]] = field(default_factory=list)
+    data: list[Union[tuple[str, ...], TableBreak, TableHline]] = field(
+        default_factory=list
+    )
     etc: str = "..."
     pre_str: Callable[[Any], str] = str
     """
@@ -55,9 +57,7 @@ class Table:
         for rows that are skipped.
         """
         return sum(
-            sum(1 for _ in group)
-            if key
-            else 1
+            sum(1 for _ in group) if key else 1
             for key, group in groupby(self.column_mask)
         )
 
@@ -119,9 +119,14 @@ class Table:
         -------
         A list of integers with row widths.
         """
-        return [max(max(visible_len(d[i]), m) for d in self.data if type(d) is tuple) for i in range(self.row_len)]
+        return [
+            max(max(visible_len(d[i]), m) for d in self.data if type(d) is tuple)
+            for i in range(self.row_len)
+        ]
 
-    def compute(self, join: str, widths: Optional[list[int]] = None, elli: str = "…") -> Iterator[str]:
+    def compute(
+        self, join: str, widths: Optional[list[int]] = None, elli: str = "…"
+    ) -> Iterator[str]:
         """
         Computes the table.
 
@@ -144,7 +149,10 @@ class Table:
                 if widths is None:
                     yield join.join(i)
                 else:
-                    yield join.join(align(s, n, elli=elli, justify=justify) for s, n in zip(i, widths))
+                    yield join.join(
+                        align(s, n, elli=elli, justify=justify)
+                        for s, n in zip(i, widths)
+                    )
                     justify = "right"
             elif isinstance(i, TableBreak):
                 yield str(i)
@@ -214,7 +222,7 @@ class MarkdownTextFormats(TextFormats):
 
     @staticmethod
     def escape(s: str) -> str:
-        return re.sub(f'(~~~)', r'[triple ~]', s)
+        return re.sub("(~~~)", r"[triple ~]", s)
 
 
 _tformat = "\033[%dm%%s\033[0m"
@@ -266,14 +274,14 @@ class HTMLTextFormats(TextFormats):
     same_entry: str = "<h4>same {path_key}</h4>"
     skip_equal: str = "({n} lines match)"
     line_ctx: str = "  {line}"
-    line_add: str = "<span class=\"diff-add\">&gt; {line}</span>"
-    line_rm: str = "<span class=\"diff-rm\">&lt; {line}</span>"
-    line_aligned: str = "<span class=\"diff-highlight\">≈ {line}</span>"
-    line_aligned_add: str = "<span class=\"diff-add-aligned\">&gt; {line}</span>"
-    line_aligned_rm: str = "<span class=\"diff-rm-aligned\">&lt; {line}</span>"
+    line_add: str = '<span class="diff-add">&gt; {line}</span>'
+    line_rm: str = '<span class="diff-rm">&lt; {line}</span>'
+    line_aligned: str = '<span class="diff-highlight">≈ {line}</span>'
+    line_aligned_add: str = '<span class="diff-add-aligned">&gt; {line}</span>'
+    line_aligned_rm: str = '<span class="diff-rm-aligned">&lt; {line}</span>'
     block_spacer: str = ""
-    chunk_add: str = "<span class=\"diff-add\">{chunk}</span>"
-    chunk_rm: str = "<span class=\"diff-rm\">{chunk}</span>"
+    chunk_add: str = '<span class="diff-add">{chunk}</span>'
+    chunk_rm: str = '<span class="diff-rm">{chunk}</span>'
 
     hello: str = dedent("""
     <!DOCTYPE html><html><head>
@@ -458,28 +466,32 @@ class HTMLTableFormats(TableFormats):
     table_head: str = "<table>"
     table_tail: str = "</table>"
 
-    skip_equal: str = "<td colspan=\"100%\" class=\"diff-context\">({n} row(s) match)</td>"
+    skip_equal: str = '<td colspan="100%" class="diff-context">({n} row(s) match)</td>'
 
     column_plain: str = "<th>{column}</th>"
-    column_add: str = "<th class=\"diff-add\">{column}</th>"
-    column_rm: str = "<th class=\"diff-rm\">{column}</th>"
-    column_both: str = "<th><span class=\"diff-rm\">{column_a}</span><span class=\"diff-add\">{column_b}</span></th>"
+    column_add: str = '<th class="diff-add">{column}</th>'
+    column_rm: str = '<th class="diff-rm">{column}</th>'
+    column_both: str = '<th><span class="diff-rm">{column_a}</span><span class="diff-add">{column_b}</span></th>'
 
-    ix_row_header: str = "<td class=\"diff-context\">A</td><td class=\"diff-context\">B</td>"
+    ix_row_header: str = (
+        '<td class="diff-context">A</td><td class="diff-context">B</td>'
+    )
     ix_row_none: str = "<td></td><td></td>"
-    ix_row_context_one: str = "<td class=\"diff-context\">{i}</td><td></td>"
-    ix_row_context_both: str = "<td class=\"diff-context\">{i_a}</td><td class=\"diff-context\">{i_b}</td>"
+    ix_row_context_one: str = '<td class="diff-context">{i}</td><td></td>'
+    ix_row_context_both: str = (
+        '<td class="diff-context">{i_a}</td><td class="diff-context">{i_b}</td>'
+    )
     ix_row_same: str = "<td>{i}</td><td></td>"
-    ix_row_a: str = "<td class=\"diff-rm\">{i}</td><td></td>"
-    ix_row_b: str = "<td></td><td class=\"diff-add\">{i}</td>"
+    ix_row_a: str = '<td class="diff-rm">{i}</td><td></td>'
+    ix_row_b: str = '<td></td><td class="diff-add">{i}</td>'
 
     data_row_none: str = "<td></td>"
-    data_row_context: str = "<td class=\"diff-context\">{chunk}</td>"
+    data_row_context: str = '<td class="diff-context">{chunk}</td>'
     data_row_same: str = "<td>{chunk}</td>"
-    data_row_a: str = "<td class=\"diff-rm\">{chunk}</td>"
-    data_row_b: str = "<td class=\"diff-add\">{chunk}</td>"
-    data_row_xa: str = "<td class=\"diff-rm diff-pair-top\">{chunk}</td>"
-    data_row_xb: str = "<td class=\"diff-add diff-pair-bottom\">{chunk}</td>"
+    data_row_a: str = '<td class="diff-rm">{chunk}</td>'
+    data_row_b: str = '<td class="diff-add">{chunk}</td>'
+    data_row_xa: str = '<td class="diff-rm diff-pair-top">{chunk}</td>'
+    data_row_xb: str = '<td class="diff-add diff-pair-bottom">{chunk}</td>'
 
     row_head: str = "<tr>"
     row_spacer: str = ""
@@ -627,9 +639,17 @@ class TextPrinter(AbstractTextPrinter):
         """
         p = self.printer.write
         add = ""
-        if self.verbosity >= 1 and isinstance(diff, PathDiff) and diff.message is not None:
+        if (
+            self.verbosity >= 1
+            and isinstance(diff, PathDiff)
+            and diff.message is not None
+        ):
             add = f" ({diff.message})"
-        p(self.text_formats.same_entry.format(path_key=f"{diff.name} -- {diff.__class__.__name__}{add}\n"))
+        p(
+            self.text_formats.same_entry.format(
+                path_key=f"{diff.name} -- {diff.__class__.__name__}{add}\n"
+            )
+        )
 
     def print_header(self, diff: AnyDiff):
         """
@@ -689,7 +709,9 @@ class TextPrinter(AbstractTextPrinter):
         diff
             The diff to print.
         """
-        fmt = self.text_formats.del_entry if diff.exist_a else self.text_formats.new_entry
+        fmt = (
+            self.text_formats.del_entry if diff.exist_a else self.text_formats.new_entry
+        )
         self.printer.write(f"{fmt.format(path_key=diff.name)}\n")
 
     def print_mime(self, diff: MIMEDiff):
@@ -701,7 +723,9 @@ class TextPrinter(AbstractTextPrinter):
         diff
             The diff to print.
         """
-        self.printer.write(f"{self.text_formats.mime_entry.format(path_key=diff.name, path_a=diff.mime_a, path_b=diff.mime_b)}\n")
+        self.printer.write(
+            f"{self.text_formats.mime_entry.format(path_key=diff.name, path_a=diff.mime_a, path_b=diff.mime_b)}\n"
+        )
 
     def print_text(self, diff: TextDiff):
         """
@@ -724,13 +748,19 @@ class TextPrinter(AbstractTextPrinter):
 
         separator = False
         p(self.text_formats.textwrap_start)
-        for is_skip, group in groupby(iter_chunks_important(diff.data, context_size=self.context_size), lambda i: isinstance(i, int)):
+        for is_skip, group in groupby(
+            iter_chunks_important(diff.data, context_size=self.context_size),
+            lambda i: isinstance(i, int),
+        ):
             if is_skip:
                 for i in group:
                     p(self.text_formats.skip_equal.format(n=i) + "\n")
                     separator = False
             else:
-                for key, group_2 in groupby(group, lambda i: (i.a is not None, i.b is not None, i.diff is not None)):
+                for key, group_2 in groupby(
+                    group,
+                    lambda i: (i.a is not None, i.b is not None, i.diff is not None),
+                ):
                     if separator:
                         p(self.text_formats.block_spacer)
                     separator = True
@@ -747,17 +777,35 @@ class TextPrinter(AbstractTextPrinter):
 
                         else:  # inline diff
                             if not self.text_split_aligned:
-                                p(fmt.format(line=_format_text_line(
-                                    i.diff,
-                                    self.text_formats.chunk_rm,
-                                    self.text_formats.chunk_add
-                                )))
+                                p(
+                                    fmt.format(
+                                        line=_format_text_line(
+                                            i.diff,
+                                            self.text_formats.chunk_rm,
+                                            self.text_formats.chunk_add,
+                                        )
+                                    )
+                                )
                             else:
                                 for fmt_line, fmt_rm, fmt_add in [
-                                    (self.text_formats.line_aligned_rm, self.text_formats.chunk_rm, None),
-                                    (self.text_formats.line_aligned_add, None, self.text_formats.chunk_add),
+                                    (
+                                        self.text_formats.line_aligned_rm,
+                                        self.text_formats.chunk_rm,
+                                        None,
+                                    ),
+                                    (
+                                        self.text_formats.line_aligned_add,
+                                        None,
+                                        self.text_formats.chunk_add,
+                                    ),
                                 ]:
-                                    p(fmt_line.format(line=_format_text_line(i.diff, fmt_rm, fmt_add)))
+                                    p(
+                                        fmt_line.format(
+                                            line=_format_text_line(
+                                                i.diff, fmt_rm, fmt_add
+                                            )
+                                        )
+                                    )
         p(self.text_formats.textwrap_end)
 
     def print_table(self, diff: TableDiff):
@@ -776,10 +824,15 @@ class TextPrinter(AbstractTextPrinter):
         if self.table_collapse_columns:
             show_col = [True, *~diff.data.eq.all(axis=0)]
             if diff.columns is not None:
-                show_col = [True, *(
-                    i or col_a != col_b
-                    for i, col_a, col_b in zip(show_col[1:], diff.columns.a, diff.columns.b)
-                )]
+                show_col = [
+                    True,
+                    *(
+                        i or col_a != col_b
+                        for i, col_a, col_b in zip(
+                            show_col[1:], diff.columns.a, diff.columns.b
+                        )
+                    ),
+                ]
         else:
             show_col = [True] * (diff.data.eq.shape[1] + 1)
         table = Table(column_mask=show_col)
@@ -790,13 +843,24 @@ class TextPrinter(AbstractTextPrinter):
             for col_a, col_b in zip(diff.columns.a, diff.columns.b):
                 col_ix = len(row)
                 if col_a == col_b:
-                    col = self.table_formats.column_plain.format(column=col_a, col_ix=col_ix)
+                    col = self.table_formats.column_plain.format(
+                        column=col_a, col_ix=col_ix
+                    )
                 elif not col_a:
-                    col = self.table_formats.column_add.format(column=col_b, col_ix=col_ix)
+                    col = self.table_formats.column_add.format(
+                        column=col_b, col_ix=col_ix
+                    )
                 elif not col_b:
-                    col = self.table_formats.column_rm.format(column=col_a, col_ix=col_ix)
+                    col = self.table_formats.column_rm.format(
+                        column=col_a, col_ix=col_ix
+                    )
                 else:
-                    col = self.table_formats.column_both.format(column_a=col_a, column_b=col_b, col_ix_a=col_ix, col_ix_b=col_ix + 1)
+                    col = self.table_formats.column_both.format(
+                        column_a=col_a,
+                        column_b=col_b,
+                        col_ix_a=col_ix,
+                        col_ix_b=col_ix + 1,
+                    )
                 row.append(col)
             table.append_row(row)
 
@@ -804,52 +868,125 @@ class TextPrinter(AbstractTextPrinter):
             table.append_hline(self.table_formats.hline)
 
         # print table data
-        for i in iter_chunks_important(diff.data.to_plain(), context_size=self.context_size):
+        for i in iter_chunks_important(
+            diff.data.to_plain(), context_size=self.context_size
+        ):
             if isinstance(i, int):
                 table.append_break(self.table_formats.skip_equal.format(n=i))
             elif isinstance(i, Item):
-
                 if i.a is None:  # addition
-                    table.append_row([self.table_formats.ix_row_b.format(i=i.ix_b), *(self.table_formats.data_row_b.format(chunk=s) for s in i.b)])
+                    table.append_row(
+                        [
+                            self.table_formats.ix_row_b.format(i=i.ix_b),
+                            *(
+                                self.table_formats.data_row_b.format(chunk=s)
+                                for s in i.b
+                            ),
+                        ]
+                    )
 
                 elif i.b is None:  # removal
-                    table.append_row([self.table_formats.ix_row_a.format(i=i.ix_a), *(self.table_formats.data_row_a.format(chunk=s) for s in i.a)])
+                    table.append_row(
+                        [
+                            self.table_formats.ix_row_a.format(i=i.ix_a),
+                            *(
+                                self.table_formats.data_row_a.format(chunk=s)
+                                for s in i.a
+                            ),
+                        ]
+                    )
 
                 elif i.diff is None:  # context
                     if i.ix_a == i.ix_b:
                         code = self.table_formats.ix_row_context_one.format(i=i.ix_a)
                     else:
-                        code = self.table_formats.ix_row_context_both.format(i_a=i.ix_a, i_b=i.ix_b)
-                    table.append_row([code, *(self.table_formats.data_row_context.format(chunk=s) for s in i.a)])
+                        code = self.table_formats.ix_row_context_both.format(
+                            i_a=i.ix_a, i_b=i.ix_b
+                        )
+                    table.append_row(
+                        [
+                            code,
+                            *(
+                                self.table_formats.data_row_context.format(chunk=s)
+                                for s in i.a
+                            ),
+                        ]
+                    )
 
                 else:  # inline diff
                     row_a = []
                     row_b = []
                     any_row_b = False
                     if i.ix_a != i.ix_b:
-                        row_a.append(self.table_formats.ix_row_a.format(i=i.ix_a, col_ix=len(row_a)))
-                        row_b.append(self.table_formats.ix_row_b.format(i=i.ix_b, col_ix=len(row_b)))
+                        row_a.append(
+                            self.table_formats.ix_row_a.format(
+                                i=i.ix_a, col_ix=len(row_a)
+                            )
+                        )
+                        row_b.append(
+                            self.table_formats.ix_row_b.format(
+                                i=i.ix_b, col_ix=len(row_b)
+                            )
+                        )
                         any_row_b = True
                     else:
-                        row_a.append(self.table_formats.ix_row_same.format(i=i.ix_a, col_ix=len(row_a)))
-                        row_b.append(self.table_formats.ix_row_none.format(col_ix=len(row_b)))
+                        row_a.append(
+                            self.table_formats.ix_row_same.format(
+                                i=i.ix_a, col_ix=len(row_a)
+                            )
+                        )
+                        row_b.append(
+                            self.table_formats.ix_row_none.format(col_ix=len(row_b))
+                        )
                     for a, b, eq in zip(i.a, i.b, i.diff):
                         if eq:
-                            row_a.append(self.table_formats.data_row_same.format(chunk=a, col_ix=len(row_a)))
-                            row_b.append(self.table_formats.data_row_none.format(col_ix=len(row_b)))
+                            row_a.append(
+                                self.table_formats.data_row_same.format(
+                                    chunk=a, col_ix=len(row_a)
+                                )
+                            )
+                            row_b.append(
+                                self.table_formats.data_row_none.format(
+                                    col_ix=len(row_b)
+                                )
+                            )
                         else:
                             if bool(a) and bool(b):
-                                row_a.append(self.table_formats.data_row_xa.format(chunk=a, col_ix=len(row_a)))
-                                row_b.append(self.table_formats.data_row_xb.format(chunk=b, col_ix=len(row_b)))
+                                row_a.append(
+                                    self.table_formats.data_row_xa.format(
+                                        chunk=a, col_ix=len(row_a)
+                                    )
+                                )
+                                row_b.append(
+                                    self.table_formats.data_row_xb.format(
+                                        chunk=b, col_ix=len(row_b)
+                                    )
+                                )
                                 any_row_b = True
                             else:
                                 if a:
-                                    row_a.append(self.table_formats.data_row_a.format(chunk=a, col_ix=len(row_a)))
+                                    row_a.append(
+                                        self.table_formats.data_row_a.format(
+                                            chunk=a, col_ix=len(row_a)
+                                        )
+                                    )
                                 elif b:
-                                    row_a.append(self.table_formats.data_row_b.format(chunk=b, col_ix=len(row_a)))
+                                    row_a.append(
+                                        self.table_formats.data_row_b.format(
+                                            chunk=b, col_ix=len(row_a)
+                                        )
+                                    )
                                 else:
-                                    row_a.append(self.table_formats.data_row_none.format(col_ix=len(row_a)))
-                                row_b.append(self.table_formats.data_row_none.format(col_ix=len(row_b)))
+                                    row_a.append(
+                                        self.table_formats.data_row_none.format(
+                                            col_ix=len(row_a)
+                                        )
+                                    )
+                                row_b.append(
+                                    self.table_formats.data_row_none.format(
+                                        col_ix=len(row_b)
+                                    )
+                                )
                     table.append_row(row_a)
                     if any_row_b:
                         table.append_row(row_b)
@@ -863,7 +1000,14 @@ class TextPrinter(AbstractTextPrinter):
             spacer_len = visible_len(self.table_formats.row_spacer)
             tail_len = visible_len(self.table_formats.row_tail)
             # adjustable width excludes spacer, head, tail, index column and minimal width
-            adj_width = max(0, self.width - head_len - tail_len - (len(widths) - 1) * (min_width + spacer_len) - widths[0])
+            adj_width = max(
+                0,
+                self.width
+                - head_len
+                - tail_len
+                - (len(widths) - 1) * (min_width + spacer_len)
+                - widths[0],
+            )
 
             cs = [0]  # np.cumsum
             s = 0
@@ -875,8 +1019,12 @@ class TextPrinter(AbstractTextPrinter):
                 cs = [int(i * ratio) for i in cs]
             widths = [widths[0], *(j - i + min_width for i, j in zip(cs[:-1], cs[1:]))]
 
-        for row in table.compute(self.table_formats.row_spacer, widths=widths, elli=self.table_formats.elli):
-            self.printer.write(self.table_formats.row_head + row + self.table_formats.row_tail + "\n")
+        for row in table.compute(
+            self.table_formats.row_spacer, widths=widths, elli=self.table_formats.elli
+        ):
+            self.printer.write(
+                self.table_formats.row_head + row + self.table_formats.row_tail + "\n"
+            )
 
         self.printer.write(self.table_formats.table_tail)
 
@@ -936,7 +1084,9 @@ class SummaryTextPrinter(AbstractTextPrinter):
         diff
             A diff to process.
         """
-        self.printer.write(self._empty_fmt.format("1", "", "", "", f"{diff.name} match\n"))
+        self.printer.write(
+            self._empty_fmt.format("1", "", "", "", f"{diff.name} match\n")
+        )
 
     def print_path(self, diff: PathDiff):
         """
@@ -965,7 +1115,11 @@ class SummaryTextPrinter(AbstractTextPrinter):
         diff
             The diff to print.
         """
-        self.printer.write(self._empty_fmt.format('DEL' if diff.exist_a else 'NEW', "", "", "", f"{diff.name}\n"))
+        self.printer.write(
+            self._empty_fmt.format(
+                "DEL" if diff.exist_a else "NEW", "", "", "", f"{diff.name}\n"
+            )
+        )
 
     def print_mime(self, diff: MIMEDiff):
         """
@@ -976,7 +1130,11 @@ class SummaryTextPrinter(AbstractTextPrinter):
         diff
             The diff to print.
         """
-        self.printer.write(self._empty_fmt.format("MIME", "", "", "", f"{diff.name} {diff.mime_a} ≠ {diff.mime_b}\n"))
+        self.printer.write(
+            self._empty_fmt.format(
+                "MIME", "", "", "", f"{diff.name} {diff.mime_a} ≠ {diff.mime_b}\n"
+            )
+        )
 
     def print_text(self, diff: TextDiff):
         """
@@ -994,9 +1152,15 @@ class SummaryTextPrinter(AbstractTextPrinter):
                 n_eq += s * is_eq * is_exact
                 n_al += s * is_eq * (not is_exact)
                 n_ne += s * (not is_eq)
-            self.printer.write(self._full_fmt.format(diff.data.ratio, n_eq, n_al, n_ne, f"{diff.name}\n"))
+            self.printer.write(
+                self._full_fmt.format(
+                    diff.data.ratio, n_eq, n_al, n_ne, f"{diff.name}\n"
+                )
+            )
         else:
-            self.printer.write(self._ratio_fmt.format(diff.data.ratio, "", "", "", f"{diff.name}\n"))
+            self.printer.write(
+                self._ratio_fmt.format(diff.data.ratio, "", "", "", f"{diff.name}\n")
+            )
 
     def print_table(self, diff: TableDiff):
         """
@@ -1010,4 +1174,6 @@ class SummaryTextPrinter(AbstractTextPrinter):
         n_eq = diff.data.eq.all(axis=1).sum()
         n_al = diff.data.eq.any(axis=1).sum() - n_eq
         n_ne = (~diff.data.eq).all(axis=1).sum()
-        self.printer.write(self._full_fmt.format(diff.data.ratio, n_eq, n_al, n_ne, f"{diff.name}\n"))
+        self.printer.write(
+            self._full_fmt.format(diff.data.ratio, n_eq, n_al, n_ne, f"{diff.name}\n")
+        )

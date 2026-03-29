@@ -9,25 +9,24 @@ import numpy as np
 from .chunk import Diff, Chunk, ChunkSignature, Signature
 from .myers import MAX_COST, MAX_CALLS, MIN_RATIO
 from .sequence import diff_nested, diff as sequence_diff, _pop_optional
-from .cython.compare import ComparisonBackend
 from .cython.struct3118 import parse_3118, StructType
 from .protocols import wrap
 
 
 def diff(
-        a,
-        b,
-        atol: Optional[float] = None,
-        min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-        max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-        max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
-        eq_only: bool = False,
-        kernel: Optional[str] = None,
-        rtn_diff: bool = True,
-        record_compare_names: bool = False,
-        record_compare_data: bool = False,
-        record_min_ratio: float = MIN_RATIO,
-        record_max_cost: int = MAX_COST,
+    a,
+    b,
+    atol: Optional[float] = None,
+    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
+    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
+    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
+    eq_only: bool = False,
+    kernel: Optional[str] = None,
+    rtn_diff: bool = True,
+    record_compare_names: bool = False,
+    record_compare_data: bool = False,
+    record_min_ratio: float = MIN_RATIO,
+    record_max_cost: int = MAX_COST,
 ) -> Diff:
     """
     Computes a diff between numpy tensors of equal rank.
@@ -106,11 +105,15 @@ def diff(
             data_min_ratio=min_ratio,
             data_max_cost=max_cost,
         )
-        struct_field_map = list(chain(*(
-            zip(chunk.data_a, chunk.data_b)
-            for chunk in dtype_d.diffs
-            if chunk.eq
-        )))
+        struct_field_map = list(
+            chain(
+                *(
+                    zip(chunk.data_a, chunk.data_b)
+                    for chunk in dtype_d.diffs
+                    if chunk.eq
+                )
+            )
+        )
         struct_threshold = max(
             int(ceil(dtype_d.signature.max_cost * record_min_ratio / 2)),
             int(ceil((dtype_d.signature.max_cost - record_max_cost) / 2)),
@@ -133,7 +136,9 @@ def diff(
     )
 
 
-def _to_record(arg, look_field_names: bool, look_field_dtypes: bool) -> tuple[list[str], list[Any], Optional[np.recarray]]:
+def _to_record(
+    arg, look_field_names: bool, look_field_dtypes: bool
+) -> tuple[list[str], list[Any], Optional[np.recarray]]:
     if isinstance(arg, np.ndarray):
         if arg.dtype.names is None:
             data = np.rec.fromarrays([arg], dtype=np.dtype([("field", arg.dtype)]))
@@ -149,7 +154,9 @@ def _to_record(arg, look_field_names: bool, look_field_dtypes: bool) -> tuple[li
     else:
         raise ValueError(f"unknown argument: {arg}")
 
-    parsed_type = parse_3118(memoryview(np.rec.fromarrays([[]] * len(dtype.fields), dtype=dtype)).format)
+    parsed_type = parse_3118(
+        memoryview(np.rec.fromarrays([[]] * len(dtype.fields), dtype=dtype)).format
+    )
     assert isinstance(parsed_type, StructType)
     parsed_fields = parsed_type.fields
     names = [i.caption for i in parsed_fields]
@@ -169,20 +176,20 @@ def _to_record(arg, look_field_names: bool, look_field_dtypes: bool) -> tuple[li
 
 
 def dtype_diff(
-        a,
-        b,
-        min_ratio: Union[float, tuple[float]] = MIN_RATIO,
-        max_cost: Union[int, tuple[int]] = MAX_COST,
-        max_calls: Union[int, tuple[int]] = MAX_CALLS,
-        eq_only: bool = False,
-        kernel: Optional[str] = None,
-        rtn_diff: bool = True,
-        look_field_names: bool = True,
-        look_field_dtypes: bool = False,
-        look_field_data: bool = False,
-        data_atol: Optional[float] = None,
-        data_min_ratio: float = MIN_RATIO,
-        data_max_cost: int = MAX_COST,
+    a,
+    b,
+    min_ratio: Union[float, tuple[float]] = MIN_RATIO,
+    max_cost: Union[int, tuple[int]] = MAX_COST,
+    max_calls: Union[int, tuple[int]] = MAX_CALLS,
+    eq_only: bool = False,
+    kernel: Optional[str] = None,
+    rtn_diff: bool = True,
+    look_field_names: bool = True,
+    look_field_dtypes: bool = False,
+    look_field_data: bool = False,
+    data_atol: Optional[float] = None,
+    data_min_ratio: float = MIN_RATIO,
+    data_max_cost: int = MAX_COST,
 ) -> Diff:
     """
     Computes a diff between numpy record dtypes.
@@ -249,17 +256,14 @@ def dtype_diff(
     if look_field_data:
         # a comparison taking into account field data
         def _eq(i: int, j: int) -> bool:
-            return (
-                fingerprints_a[i] == fingerprints_b[j] and
-                sequence_diff(
-                    a=data_a[names_a[i]],
-                    b=data_b[names_b[j]],
-                    rtn_diff=False,
-                    eq_only=True,
-                    atol=data_atol,
-                    min_ratio=data_min_ratio,
-                    max_cost=data_max_cost,
-                )
+            return fingerprints_a[i] == fingerprints_b[j] and sequence_diff(
+                a=data_a[names_a[i]],
+                b=data_b[names_b[j]],
+                rtn_diff=False,
+                eq_only=True,
+                atol=data_atol,
+                min_ratio=data_min_ratio,
+                max_cost=data_max_cost,
             )
     else:
         # a simple comparison not involving data
@@ -281,7 +285,9 @@ def _anonymize_fields(fields: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return [(f"field{i}", t) for i, (_, t) in enumerate(fields)]
 
 
-def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tuple[np.ndarray, np.ndarray]:
+def align_inflate_arrays(
+    a: np.ndarray, b: np.ndarray, field_diff: Diff
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Aligns arrays towards a common (record) dtype.
     Given two record arrays and the dtype diff, produces the corresponding pair of arrays with the same record
@@ -311,7 +317,9 @@ def align_inflate_arrays(a: np.ndarray, b: np.ndarray, field_diff: Diff) -> tupl
         hook_b_a=partial(np.zeros_like, shape=b.shape),
     )
 
-    return np.rec.fromarrays(init_a, names=names_a), np.rec.fromarrays(init_b, names=names_b)
+    return np.rec.fromarrays(init_a, names=names_a), np.rec.fromarrays(
+        init_b, names=names_b
+    )
 
 
 def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
@@ -355,7 +363,9 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
         elif n > 0:
             space[0, y] = max(space[0, y], space[0, y - 1])
             for x in range(1, n):
-                space[x, y] = max(space[x - 1, y], space[x, y - 1], space[x - 1, y - 1] + space[x, y])
+                space[x, y] = max(
+                    space[x - 1, y], space[x, y - 1], space[x - 1, y - 1] + space[x, y]
+                )
 
     # trace back
     x = n - 1
@@ -379,28 +389,30 @@ def common_diff_sig(n: int, m: int, diffs: Sequence[Diff]) -> Signature:
             is_b[pos + 1] = 1
     x += 1
     y += 1
-    is_b[x:x + y] = 1
+    is_b[x : x + y] = 1
     is_eq[0] = 1 - is_eq[1]
     is_eq[-1] = 1 - is_eq[-2]
-    ix, = np.nonzero(is_eq[1:] != is_eq[:-1])
-    return Signature(parts=tuple(
-        ChunkSignature(
-            size_a=int((~is_b[fr:to]).sum()),
-            size_b=int((is_b[fr:to]).sum()),
-            eq=bool(is_eq[fr + 1]),
+    (ix,) = np.nonzero(is_eq[1:] != is_eq[:-1])
+    return Signature(
+        parts=tuple(
+            ChunkSignature(
+                size_a=int((~is_b[fr:to]).sum()),
+                size_b=int((is_b[fr:to]).sum()),
+                eq=bool(is_eq[fr + 1]),
+            )
+            for fr, to in zip(ix[:-1], ix[1:])
         )
-        for fr, to in zip(ix[:-1], ix[1:])
-    ))
+    )
 
 
 def get_row_col_diff(
-        a: np.ndarray,
-        b: np.ndarray,
-        atol: Optional[float] = None,
-        min_ratio: Union[float, tuple[float]] = MIN_RATIO,
-        max_cost: Union[int, tuple[int]] = MAX_COST,
-        max_calls: Union[int, tuple[int]] = MAX_CALLS,
-        kernel: Optional[str] = None,
+    a: np.ndarray,
+    b: np.ndarray,
+    atol: Optional[float] = None,
+    min_ratio: Union[float, tuple[float]] = MIN_RATIO,
+    max_cost: Union[int, tuple[int]] = MAX_COST,
+    max_calls: Union[int, tuple[int]] = MAX_CALLS,
+    kernel: Optional[str] = None,
 ) -> tuple[Signature, Signature]:
     """
     Aligns rows and columns of two matrices and returns the corresponding pair
@@ -465,7 +477,9 @@ def get_row_col_diff(
     return row_sig, col_sig
 
 
-def align_inflate(a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int) -> tuple[np.ndarray, np.ndarray]:
+def align_inflate(
+    a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Align arrays with the given value by inflating them.
 
@@ -501,16 +515,16 @@ def align_inflate(a: np.ndarray, b: np.ndarray, val, sig: Signature, dim: int) -
     offset_a = offset_b = offset = 0
     for chunk in sig.parts:
         # a comes first
-        result_a[(*pre, slice(offset, offset + chunk.size_a), *post)] = (
-            a[(*pre, slice(offset_a, offset_a + chunk.size_a), *post)]
-        )
+        result_a[(*pre, slice(offset, offset + chunk.size_a), *post)] = a[
+            (*pre, slice(offset_a, offset_a + chunk.size_a), *post)
+        ]
         offset_a += chunk.size_a
         if not chunk.eq:
             offset += chunk.size_a
         # b is second
-        result_b[(*pre, slice(offset, offset + chunk.size_b), *post)] = (
-            b[(*pre, slice(offset_b, offset_b + chunk.size_b), *post)]
-        )
+        result_b[(*pre, slice(offset, offset + chunk.size_b), *post)] = b[
+            (*pre, slice(offset_b, offset_b + chunk.size_b), *post)
+        ]
         offset_b += chunk.size_b
         offset += chunk.size_b
     return result_a, result_b
@@ -532,6 +546,7 @@ class NumpyDiff(NamedTuple):
     col_diff_sig
         Row and column diff signatures.
     """
+
     a: np.ndarray
     b: np.ndarray
     eq: np.ndarray
@@ -547,7 +562,7 @@ class NumpyDiff(NamedTuple):
             total += n
             eq += n * sig.eq
         if eq == 0 and total == 0:
-            return 1.
+            return 1.0
         return eq / total
 
     @property
@@ -558,12 +573,16 @@ class NumpyDiff(NamedTuple):
     @property
     def a_shape(self) -> tuple[int, int]:
         """The original shape of a"""
-        return sum(i.size_a for i in self.row_diff_sig.parts), sum(i.size_a for i in self.col_diff_sig.parts)
+        return sum(i.size_a for i in self.row_diff_sig.parts), sum(
+            i.size_a for i in self.col_diff_sig.parts
+        )
 
     @property
     def b_shape(self) -> tuple[int, int]:
         """The original shape of b"""
-        return sum(i.size_b for i in self.row_diff_sig.parts), sum(i.size_b for i in self.col_diff_sig.parts)
+        return sum(i.size_b for i in self.row_diff_sig.parts), sum(
+            i.size_b for i in self.col_diff_sig.parts
+        )
 
     def to_plain(self) -> Diff:
         """
@@ -573,12 +592,14 @@ class NumpyDiff(NamedTuple):
         -------
         The diff.
         """
-        rows_a, rows_b = align_inflate(  # two masks telling if it is a true row or an inflated one
-            a=np.ones(len(self.a), dtype=bool),
-            b=np.ones(len(self.b), dtype=bool),
-            val=0,
-            sig=self.row_diff_sig,
-            dim=0,
+        rows_a, rows_b = (
+            align_inflate(  # two masks telling if it is a true row or an inflated one
+                a=np.ones(len(self.a), dtype=bool),
+                b=np.ones(len(self.b), dtype=bool),
+                val=0,
+                sig=self.row_diff_sig,
+                dim=0,
+            )
         )
         aligned_mask = rows_a * rows_b
         equal_mask = self.eq.all(axis=1)
@@ -590,19 +611,23 @@ class NumpyDiff(NamedTuple):
             to = offset + group_size
 
             if key == 0:  # not equal
-                chunks.append(Chunk(
-                    data_a=self.a[offset:to][rows_a[offset:to]],
-                    data_b=self.b[offset:to][rows_b[offset:to]],
-                    eq=False,
-                ))
+                chunks.append(
+                    Chunk(
+                        data_a=self.a[offset:to][rows_a[offset:to]],
+                        data_b=self.b[offset:to][rows_b[offset:to]],
+                        eq=False,
+                    )
+                )
 
             else:  # aligned or plain equal
-                chunks.append(Chunk(
-                    data_a=self.a[offset:to][rows_a[offset:to]],
-                    data_b=self.b[offset:to][rows_b[offset:to]],
-                    eq=True,
-                    details=None if key == 2 else self.eq[offset:to],
-                ))
+                chunks.append(
+                    Chunk(
+                        data_a=self.a[offset:to][rows_a[offset:to]],
+                        data_b=self.b[offset:to][rows_b[offset:to]],
+                        eq=True,
+                        details=None if key == 2 else self.eq[offset:to],
+                    )
+                )
             offset = to
 
         return Diff(
@@ -615,17 +640,17 @@ _undefined = object()
 
 
 def diff_aligned_2d(
-        a: np.ndarray,
-        b: np.ndarray,
-        fill,
-        eq=None,
-        atol: Optional[float] = None,
-        fill_eq=_undefined,
-        min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-        max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-        max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
-        col_diff_sig: Optional[Signature] = None,
-        kernel: Optional[str] = None,
+    a: np.ndarray,
+    b: np.ndarray,
+    fill,
+    eq=None,
+    atol: Optional[float] = None,
+    fill_eq=_undefined,
+    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
+    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
+    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
+    col_diff_sig: Optional[Signature] = None,
+    kernel: Optional[str] = None,
 ) -> NumpyDiff:
     """
     Computes an aligned diff between numpy matrices.
@@ -708,7 +733,7 @@ def diff_aligned_2d(
         offset = 0
         for chunk in col_diff_sig.parts:
             delta = len(chunk)
-            mask[offset:offset + delta] = chunk.eq
+            mask[offset : offset + delta] = chunk.eq
             offset += delta
 
         _max_cost = 2 * mask.sum() + (~mask).sum()
@@ -775,7 +800,9 @@ def diff_aligned_2d(
         offset = 0
         for part in sig.parts:
             if not part.eq:
-                eq_matrix[(*idx, slice(offset, offset + (n := part.size_a + part.size_b)))] = False
+                eq_matrix[
+                    (*idx, slice(offset, offset + (n := part.size_a + part.size_b)))
+                ] = False
                 offset += n
             else:
                 offset += part.size_a

@@ -1,5 +1,3 @@
-from . import rc as _
-
 import argparse
 from collections import namedtuple, defaultdict
 from pathlib import Path
@@ -16,28 +14,36 @@ from .func_util import starpartial
 from ..contextual.base import AnyDiff, add_stats
 from ..contextual.path import diff_path, VariableOption, GroupedValue
 from ..myers import MAX_COST, MIN_RATIO
-from ..presentation.base import (TextPrinter, SummaryTextPrinter, MarkdownTextFormats, MarkdownTableFormats,
-                                 TermTextFormats, TermTableFormats, HTMLTextFormats, HTMLTableFormats)
+from ..presentation.base import (
+    TextPrinter,
+    SummaryTextPrinter,
+    MarkdownTextFormats,
+    MarkdownTableFormats,
+    TermTextFormats,
+    TermTableFormats,
+    HTMLTextFormats,
+    HTMLTableFormats,
+)
 
 
 def process_iter(
-        a: Path,
-        b: Path,
-        includes: Sequence[tuple[bool, str]] = tuple(),
-        rename: Sequence[tuple[str, str]] = tuple(),
-        cherry_pick: Optional[str] = None,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        align_col_data: bool = False,
-        shallow: bool = False,
-        mime: Optional[str] = None,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
-        sort: bool = False,
-        pool: Optional[int] = None,
-        fmt_progress: Optional[str] = None,
+    a: Path,
+    b: Path,
+    includes: Sequence[tuple[bool, str]] = tuple(),
+    rename: Sequence[tuple[str, str]] = tuple(),
+    cherry_pick: Optional[str] = None,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    align_col_data: bool = False,
+    shallow: bool = False,
+    mime: Optional[str] = None,
+    table_drop_cols: Optional[Sequence[str]] = None,
+    table_sort: Optional[Sequence[str]] = None,
+    sort: bool = False,
+    pool: Optional[int] = None,
+    fmt_progress: Optional[str] = None,
 ) -> Iterator[AnyDiff]:
     """
     Process anc compare to folders. Yields all diffs processed, even if they are equal.
@@ -95,26 +101,29 @@ def process_iter(
 
     transform = None
     if rename:
+
         def transform(child_path: Path) -> str:
             result = str(child_path)
             for args in rename:
                 result = re.sub(*args, result, count=1)
             return result
 
-    source = iter_match(a, b, rules=rules, transform=transform, sort=sort, cherry_pick=cherry_pick)
+    source = iter_match(
+        a, b, rules=rules, transform=transform, sort=sort, cherry_pick=cherry_pick
+    )
     if fmt_progress is not None:
         source = list(source)
     _processor = starpartial(
-            diff_path,
-            mime=mime,
-            min_ratio=min_ratio,
-            min_ratio_row=min_ratio_row,
-            max_cost=max_cost,
-            max_cost_row=max_cost_row,
-            align_col_data=align_col_data,
-            shallow=shallow,
-            table_drop_cols=table_drop_cols,
-            table_sort=table_sort,
+        diff_path,
+        mime=mime,
+        min_ratio=min_ratio,
+        min_ratio_row=min_ratio_row,
+        max_cost=max_cost,
+        max_cost_row=max_cost_row,
+        align_col_data=align_col_data,
+        shallow=shallow,
+        table_drop_cols=table_drop_cols,
+        table_sort=table_sort,
     )
     if pool is not None:
         ctx = Pool(processes=pool)
@@ -139,32 +148,32 @@ def process_iter(
 
 
 def process_print(
-        a: Path,
-        b: Path,
-        includes: Sequence[tuple[bool, str]] = tuple(),
-        rename: Sequence[tuple[str, str]] = tuple(),
-        cherry_pick: Optional[str] = None,
-        min_ratio: float = MIN_RATIO,
-        min_ratio_row: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_cost_row: int = MAX_COST,
-        align_col_data: bool = False,
-        shallow: bool = False,
-        mime: Optional[str] = None,
-        table_drop_cols: Optional[Sequence[str]] = None,
-        table_sort: Optional[Sequence[str]] = None,
-        sort: bool = False,
-        output_format: Optional[str] = None,
-        output_verbosity: int = 0,
-        output_context_size: int = 2,
-        output_text_line_split: bool = False,
-        output_table_collapse_columns: bool = False,
-        output_file=None,
-        output_term_width: Optional[int] = None,
-        pool: Optional[int] = None,
-        print_progress: bool = False,
-        print_stats: bool = False,
-        print_stats_start_time: Optional[float] = None,
+    a: Path,
+    b: Path,
+    includes: Sequence[tuple[bool, str]] = tuple(),
+    rename: Sequence[tuple[str, str]] = tuple(),
+    cherry_pick: Optional[str] = None,
+    min_ratio: float = MIN_RATIO,
+    min_ratio_row: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_cost_row: int = MAX_COST,
+    align_col_data: bool = False,
+    shallow: bool = False,
+    mime: Optional[str] = None,
+    table_drop_cols: Optional[Sequence[str]] = None,
+    table_sort: Optional[Sequence[str]] = None,
+    sort: bool = False,
+    output_format: Optional[str] = None,
+    output_verbosity: int = 0,
+    output_context_size: int = 2,
+    output_text_line_split: bool = False,
+    output_table_collapse_columns: bool = False,
+    output_file=None,
+    output_term_width: Optional[int] = None,
+    pool: Optional[int] = None,
+    print_progress: bool = False,
+    print_stats: bool = False,
+    print_stats_start_time: Optional[float] = None,
 ) -> bool:
     """
     Process anc compare to folders. Yields all diffs processed, even if they are equal.
@@ -239,7 +248,7 @@ def process_print(
     if output_file is None:
         output_file = stdout
     if output_format is None or output_format == "default":
-        if hasattr(output_file, 'isatty') and output_file.isatty():
+        if hasattr(output_file, "isatty") and output_file.isatty():
             output_format = "color"
         else:
             output_format = "plain"
@@ -251,11 +260,13 @@ def process_print(
         "width": output_term_width,
     }
     if output_format != "summary":
-        printer_kwargs.update({
-            "context_size": output_context_size,
-            "text_split_aligned": output_text_line_split,
-            "table_collapse_columns": output_table_collapse_columns,
-        })
+        printer_kwargs.update(
+            {
+                "context_size": output_context_size,
+                "text_split_aligned": output_text_line_split,
+                "table_collapse_columns": output_table_collapse_columns,
+            }
+        )
     printer_class = TextPrinter
     if output_format == "plain":
         pass
@@ -289,10 +300,23 @@ def process_print(
     any_diff = False
 
     for i in process_iter(
-            a=a, b=b, includes=includes, rename=rename, cherry_pick=cherry_pick,
-            min_ratio=min_ratio, min_ratio_row=min_ratio_row,
-            max_cost=max_cost, max_cost_row=max_cost_row, align_col_data=align_col_data, shallow=shallow, mime=mime,
-            table_drop_cols=table_drop_cols, table_sort=table_sort, sort=sort, pool=pool, fmt_progress=fmt_progress,
+        a=a,
+        b=b,
+        includes=includes,
+        rename=rename,
+        cherry_pick=cherry_pick,
+        min_ratio=min_ratio,
+        min_ratio_row=min_ratio_row,
+        max_cost=max_cost,
+        max_cost_row=max_cost_row,
+        align_col_data=align_col_data,
+        shallow=shallow,
+        mime=mime,
+        table_drop_cols=table_drop_cols,
+        table_sort=table_sort,
+        sort=sort,
+        pool=pool,
+        fmt_progress=fmt_progress,
     ):
         any_diff |= not i.is_eq()
         printer.print_diff(i)
@@ -303,11 +327,13 @@ def process_print(
         print("", flush=True)
     if stats:
         t = time.time()
-        print(f"Diff complete in {t - (print_stats_start_time if print_stats_start_time is not None else t0):.1f}s")
+        print(
+            f"Diff complete in {t - (print_stats_start_time if print_stats_start_time is not None else t0):.1f}s"
+        )
         if print_stats_start_time is not None:
             print(f"  method run time {t - t0:.1f}s")
         if stats:
-            print(f"  profiling:")
+            print("  profiling:")
             for k, v in sorted(stats.items(), key=lambda x: -x[1]):
                 if not k.startswith("_"):
                     print(f"    {k}: {v:.1f}")
@@ -339,50 +365,171 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     def with_group(t):
         def _wrapped(x):
             return GroupedValue(current_group, t(x))
+
         return _wrapped
 
     def default(x):
         return [GroupedValue(None, x)]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("a", type=Path, metavar="FILE", help="the A version of the file tree or a single file")
-    parser.add_argument("b", type=Path, metavar="FILE", help="the B version of the file tree or a single file")
+    parser.add_argument(
+        "a",
+        type=Path,
+        metavar="FILE",
+        help="the A version of the file tree or a single file",
+    )
+    parser.add_argument(
+        "b",
+        type=Path,
+        metavar="FILE",
+        help="the B version of the file tree or a single file",
+    )
     parser.add_argument("--reverse", action="store_true", help="swap A and B")
 
     consumption_group = parser.add_argument_group("path consumption options")
-    consumption_group.add_argument("--include", action="append", dest="includes", metavar="PATTERN", help="paths to include", type=lambda x: include_options_type(True, x))
-    consumption_group.add_argument("--exclude", action="append", dest="includes", metavar="PATTERN", help="paths to exclude", type=lambda x: include_options_type(False, x))
-    consumption_group.add_argument("--rename", nargs=2, action="append", metavar="PATTERN REPLACE", help="rename files using re.sub")
-    consumption_group.add_argument("--sort", action="store_true", help="sort diffs by file name")
-    consumption_group.add_argument("--cherry-pick", metavar="NAME", help="cherry-picks one file to diff")
-    consumption_group.add_argument("--pool", type=int, metavar="NPROCS", help="compute diffs in parallel with the specified number of processes")
+    consumption_group.add_argument(
+        "--include",
+        action="append",
+        dest="includes",
+        metavar="PATTERN",
+        help="paths to include",
+        type=lambda x: include_options_type(True, x),
+    )
+    consumption_group.add_argument(
+        "--exclude",
+        action="append",
+        dest="includes",
+        metavar="PATTERN",
+        help="paths to exclude",
+        type=lambda x: include_options_type(False, x),
+    )
+    consumption_group.add_argument(
+        "--rename",
+        nargs=2,
+        action="append",
+        metavar="PATTERN REPLACE",
+        help="rename files using re.sub",
+    )
+    consumption_group.add_argument(
+        "--sort", action="store_true", help="sort diffs by file name"
+    )
+    consumption_group.add_argument(
+        "--cherry-pick", metavar="NAME", help="cherry-picks one file to diff"
+    )
+    consumption_group.add_argument(
+        "--pool",
+        type=int,
+        metavar="NPROCS",
+        help="compute diffs in parallel with the specified number of processes",
+    )
 
     control_group = parser.add_argument_group("grouping")
-    control_group.add_argument("--group", action="append", metavar="PATTERN", help="makes other (supported) arguments following this one to apply only to files matching PATTERN", type=new_group)
+    control_group.add_argument(
+        "--group",
+        action="append",
+        metavar="PATTERN",
+        help="makes other (supported) arguments following this one to apply only to files matching PATTERN",
+        type=new_group,
+    )
 
     algorithm_group = parser.add_argument_group("algorithm settings")
-    algorithm_group.add_argument("--min-ratio", type=with_group(float), default=default(MIN_RATIO), metavar="[0..1]", help="the minimal required similarity ratio value. Setting this to a higher value will make the algorithm stop earlier", action="append")
-    algorithm_group.add_argument("--min-ratio-row", type=with_group(float), default=default(MIN_RATIO), metavar="[0..1]", help="the minimal required similarity ratio value for individual lines/rows. Setting this to a higher value will make the algorithm stop earlier", action="append")
-    algorithm_group.add_argument("--max-cost", type=with_group(int), default=default(MAX_COST), metavar="INT", help="the maximal diff cost. Setting this to a lower value will make the algorithm stop earlier", action="append")
-    algorithm_group.add_argument("--max-cost-row", type=with_group(int), default=default(MAX_COST), metavar="INT", help="the maximal diff cost for individual lines/rows. Setting this to a lower value will make the algorithm stop earlier", action="append")
-    algorithm_group.add_argument("--align-col-data", action="store_true", help="align table columns by comparing their data instead of column names. May slow down comparison significantly")  # TODO support groups
-    algorithm_group.add_argument("--shallow", action="store_true", help="disables diff comparison and simply prints mismatching files")  # TODO support groups
+    algorithm_group.add_argument(
+        "--min-ratio",
+        type=with_group(float),
+        default=default(MIN_RATIO),
+        metavar="[0..1]",
+        help="the minimal required similarity ratio value. Setting this to a higher value will make the algorithm stop earlier",
+        action="append",
+    )
+    algorithm_group.add_argument(
+        "--min-ratio-row",
+        type=with_group(float),
+        default=default(MIN_RATIO),
+        metavar="[0..1]",
+        help="the minimal required similarity ratio value for individual lines/rows. Setting this to a higher value will make the algorithm stop earlier",
+        action="append",
+    )
+    algorithm_group.add_argument(
+        "--max-cost",
+        type=with_group(int),
+        default=default(MAX_COST),
+        metavar="INT",
+        help="the maximal diff cost. Setting this to a lower value will make the algorithm stop earlier",
+        action="append",
+    )
+    algorithm_group.add_argument(
+        "--max-cost-row",
+        type=with_group(int),
+        default=default(MAX_COST),
+        metavar="INT",
+        help="the maximal diff cost for individual lines/rows. Setting this to a lower value will make the algorithm stop earlier",
+        action="append",
+    )
+    algorithm_group.add_argument(
+        "--align-col-data",
+        action="store_true",
+        help="align table columns by comparing their data instead of column names. May slow down comparison significantly",
+    )  # TODO support groups
+    algorithm_group.add_argument(
+        "--shallow",
+        action="store_true",
+        help="disables diff comparison and simply prints mismatching files",
+    )  # TODO support groups
 
     misc_group = parser.add_argument_group("misc settings")
-    misc_group.add_argument("--mime", metavar="MIME", help="enforce the MIME", type=with_group(str), action="append")
-    misc_group.add_argument("--table-drop-cols", nargs="+", metavar="COL1, COL2, ...", help="drop the specified columns from parsed tables")
-    misc_group.add_argument("--table-sort", nargs="*", metavar="COL1, COL2, ...", help="sort tables by the columns specified")
+    misc_group.add_argument(
+        "--mime",
+        metavar="MIME",
+        help="enforce the MIME",
+        type=with_group(str),
+        action="append",
+    )
+    misc_group.add_argument(
+        "--table-drop-cols",
+        nargs="+",
+        metavar="COL1, COL2, ...",
+        help="drop the specified columns from parsed tables",
+    )
+    misc_group.add_argument(
+        "--table-sort",
+        nargs="*",
+        metavar="COL1, COL2, ...",
+        help="sort tables by the columns specified",
+    )
 
     print_group = parser.add_argument_group("printing")
-    print_group.add_argument("--format", choices=["plain", "md", "summary", "color", "html"], default="default", help="output print format")
-    print_group.add_argument("-v", "--verbose", action="count", default=0, help="verbosity")
-    print_group.add_argument("--context-size", type=int, default=2, metavar="INT", help="the number of lines/rows to surround diffs")
-    print_group.add_argument("--text-line-split", action="store_true", help="split aligned lines into removed and added")
-    print_group.add_argument("--table-collapse", action="store_true", help="hide table columns without diffs")
+    print_group.add_argument(
+        "--format",
+        choices=["plain", "md", "summary", "color", "html"],
+        default="default",
+        help="output print format",
+    )
+    print_group.add_argument(
+        "-v", "--verbose", action="count", default=0, help="verbosity"
+    )
+    print_group.add_argument(
+        "--context-size",
+        type=int,
+        default=2,
+        metavar="INT",
+        help="the number of lines/rows to surround diffs",
+    )
+    print_group.add_argument(
+        "--text-line-split",
+        action="store_true",
+        help="split aligned lines into removed and added",
+    )
+    print_group.add_argument(
+        "--table-collapse", action="store_true", help="hide table columns without diffs"
+    )
     print_group.add_argument("--width", type=int, metavar="INT", help="terminal width")
-    print_group.add_argument("--output", type=str, metavar="FILE", help="output to file")
+    print_group.add_argument(
+        "--output", type=str, metavar="FILE", help="output to file"
+    )
     print_group.add_argument("--progress", action="store_true", help="report progress")
-    print_group.add_argument("--stats", action="store_true", help="report stats after the diff is done")
+    print_group.add_argument(
+        "--stats", action="store_true", help="report stats after the diff is done"
+    )
 
     result = parser.parse_args(args)
 
@@ -402,7 +549,8 @@ def run(args=None) -> bool:
     args = parse_args(args)
     with open(args.output, "w") if args.output else nullcontext() as f:
         return process_print(
-            a=args.a, b=args.b,
+            a=args.a,
+            b=args.b,
             includes=args.includes or tuple(),
             rename=args.rename,
             cherry_pick=args.cherry_pick,

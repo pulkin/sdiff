@@ -1,10 +1,10 @@
 """
 A Myers diff algorithm, adapted from http://blog.robertelder.org/diff-algorithm/
 """
+
 import warnings
 from array import array
-from typing import Callable, Optional
-from collections.abc import Sequence
+from typing import Callable
 
 try:
     import numpy as np
@@ -46,12 +46,12 @@ def _get_diag_index(diag: int, nm: int) -> int:
 #         0   1   2   3   4   5   6   7       diagonal
 
 
-def _get_x(diag: int, progress: int, m : int) -> int:
+def _get_x(diag: int, progress: int, m: int) -> int:
     assert (progress + diag - m) % 2 == 0
     return (progress + diag - m) // 2
 
 
-def _get_y(diag: int, progress: int, m : int) -> int:
+def _get_y(diag: int, progress: int, m: int) -> int:
     assert (progress - diag + m) % 2 == 0
     return (progress - diag + m) // 2
 
@@ -65,13 +65,13 @@ def _fill_no_solution(out: array, i: int, j: int, n: int, m: int) -> None:
 
 
 def _is_left_edge(
-        diag_updated_from: int,
-        n: int,
-        m: int,
-        nm: int,
-        is_reverse_front: int,
-        fronts: array,
-        front_updated_offset: int,
+    diag_updated_from: int,
+    n: int,
+    m: int,
+    nm: int,
+    is_reverse_front: int,
+    fronts: array,
+    front_updated_offset: int,
 ) -> bool:
     progress = fronts[front_updated_offset + _get_diag_index(diag_updated_from, nm)]
     if is_reverse_front:
@@ -81,31 +81,31 @@ def _is_left_edge(
 
 
 def _is_right_edge(
-        diag_updated_to: int,
-        n: int,
-        m: int,
-        nm: int,
-        is_reverse_front: int,
-        fronts: array,
-        front_updated_offset: int,
+    diag_updated_to: int,
+    n: int,
+    m: int,
+    nm: int,
+    is_reverse_front: int,
+    fronts: array,
+    front_updated_offset: int,
 ) -> bool:
     progress = fronts[front_updated_offset + _get_diag_index(diag_updated_to, nm)]
     if is_reverse_front:
-        return  _get_y(diag_updated_to, progress, m) == 0
+        return _get_y(diag_updated_to, progress, m) == 0
     else:
         return _get_x(diag_updated_to, progress, m) == n
 
 
 def _do_branch(
-        nm: int,
-        diag_updated_from: int,
-        no_branch_left: bool,
-        diag_updated_to: int,
-        no_branch_right: bool,
-        is_reverse_front: int,
-        reverse_as_sign: int,
-        fronts: array,
-        front_updated_offset: int,
+    nm: int,
+    diag_updated_from: int,
+    no_branch_left: bool,
+    diag_updated_to: int,
+    no_branch_right: bool,
+    is_reverse_front: int,
+    reverse_as_sign: int,
+    fronts: array,
+    front_updated_offset: int,
 ) -> None:
     ix = -1
     previous = -1
@@ -113,13 +113,14 @@ def _do_branch(
     progress0 = fronts[front_updated_offset + ix0]
 
     for diag in range(diag_updated_from, diag_updated_to + 2, 2):
-
         # source and destination indexes for the update
         progress_left = fronts[front_updated_offset + _get_diag_index(diag - 1, nm)]
         if diag == diag_updated_to and _get_diag_index(diag + 1, nm) == ix0:
             progress_right = progress0
         else:
-            progress_right = fronts[front_updated_offset + _get_diag_index(diag + 1, nm)]
+            progress_right = fronts[
+                front_updated_offset + _get_diag_index(diag + 1, nm)
+            ]
 
         if diag == diag_updated_from and not no_branch_left:  # possible in cases 2, 4
             progress = progress_right
@@ -142,15 +143,15 @@ def _do_branch(
 
 
 def search_graph_recursive(
-        n: int,
-        m: int,
-        comparison_backend: Callable[[int, int], float],
-        out: array = None,
-        max_cost: int = MAX_COST,
-        max_calls: int = MAX_CALLS,
-        eq_only: bool = False,
-        i: int = 0,
-        j: int = 0,
+    n: int,
+    m: int,
+    comparison_backend: Callable[[int, int], float],
+    out: array = None,
+    max_cost: int = MAX_COST,
+    max_calls: int = MAX_CALLS,
+    eq_only: bool = False,
+    i: int = 0,
+    j: int = 0,
 ) -> int:
     """
     Myers algorithm: Looks for the shortest path from
@@ -323,8 +324,8 @@ def search_graph_recursive(
     n_m = n + m
     # the progress of the forward front starts at 0
     # the progress of the reverse front starts at n + m
-    fronts = array('Q', (0,) * nm + (n_m,) * nm)
-    front_ranges = array('Q', (m, m, n, n))
+    fronts = array("Q", (0,) * nm + (n_m,) * nm)
+    front_ranges = array("Q", (m, m, n, n))
 
     # we, effectively, iterate over the cost itself
     # though it may also be seen as a round counter
@@ -385,12 +386,21 @@ def search_graph_recursive(
 
             # if front and reverse overlap we are done
             # to figure this out we first check whether we are facing ANY diagonal
-            if diag_facing_from <= diag <= diag_facing_to and (diag - diag_facing_from) % 2 == 0:
+            if (
+                diag_facing_from <= diag <= diag_facing_to
+                and (diag - diag_facing_from) % 2 == 0
+            ):
                 # second, we are checking the progress
-                if fronts[ix] >= fronts[ix + nm]:  # check if the two fronts (start) overlap
+                if (
+                    fronts[ix] >= fronts[ix + nm]
+                ):  # check if the two fronts (start) overlap
                     if out is not None:
                         # write the diagonal
-                        for ix in range(progress_start - 2 * is_reverse_front, progress - 2 * is_reverse_front, 2 * reverse_as_sign):
+                        for ix in range(
+                            progress_start - 2 * is_reverse_front,
+                            progress - 2 * is_reverse_front,
+                            2 * reverse_as_sign,
+                        ):
                             out[i + j + ix] = 3
                             out[i + j + ix + 1] = 0
 
@@ -469,19 +479,32 @@ def search_graph_recursive(
         #
 
         # check left edge
-        is_left_edge = _is_left_edge(diag_updated_from, n, m, nm, is_reverse_front, fronts, front_updated_offset)
+        is_left_edge = _is_left_edge(
+            diag_updated_from, n, m, nm, is_reverse_front, fronts, front_updated_offset
+        )
         diag_updated_from += 2 * is_left_edge - 1
         front_ranges[2 * is_reverse_front] = diag_updated_from
 
         # check right edge
-        is_right_edge = _is_right_edge(diag_updated_to, n, m, nm, is_reverse_front, fronts, front_updated_offset)
+        is_right_edge = _is_right_edge(
+            diag_updated_to, n, m, nm, is_reverse_front, fronts, front_updated_offset
+        )
         diag_updated_to -= 2 * is_right_edge - 1
         front_ranges[2 * is_reverse_front + 1] = diag_updated_to
 
         assert diag_updated_from <= diag_updated_to
 
-        _do_branch(nm, diag_updated_from, is_left_edge, diag_updated_to, is_right_edge, is_reverse_front,
-                   reverse_as_sign, fronts, front_updated_offset)
+        _do_branch(
+            nm,
+            diag_updated_from,
+            is_left_edge,
+            diag_updated_to,
+            is_right_edge,
+            is_reverse_front,
+            reverse_as_sign,
+            fronts,
+            front_updated_offset,
+        )
 
     if out is not None:
         _fill_no_solution(out, i, j, n, m)

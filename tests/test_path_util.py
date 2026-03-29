@@ -1,6 +1,13 @@
 import pytest
 
-from sdiff.cli.path_util import iterdir, iter_match, accept_all, accept_folders, reject_all, glob_rule
+from sdiff.cli.path_util import (
+    iterdir,
+    iter_match,
+    accept_all,
+    accept_folders,
+    reject_all,
+    glob_rule,
+)
 
 
 def test_no_files(tmp_path):
@@ -66,6 +73,7 @@ def test_simple_include(tmp_path):
         (tmp_path, accept_folders, "./"),
         (tmp_path / "1.txt", rules[0], "1.txt"),
     }
+
 
 def test_nested(tmp_path):
     (tmp_path / "1.txt").touch()

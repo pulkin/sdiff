@@ -1,6 +1,7 @@
 """
 A very naive implementation of parsing type formats from PEP-3118.
 """
+
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Union, Optional, Mapping
@@ -28,7 +29,7 @@ c_types = {
     "?": "unsigned char",
     "s": "char",
     "u": "short",
-    'w': "int",
+    "w": "int",
 }
 
 
@@ -58,7 +59,9 @@ class AtomicType(Type):
         if self.z:
             raise ValueError("complex values not supported")
         if self.byte_order not in "@=":
-            raise ValueError(f"non-native byte order '{self.byte_order}' is not supported")
+            raise ValueError(
+                f"non-native byte order '{self.byte_order}' is not supported"
+            )
         return c_types[self.typecode]
 
 
@@ -75,7 +78,7 @@ class StructField:
         elif isinstance(shape, int):
             shape = str(shape)
         else:
-            shape = "(" + ','.join(map(str, self.shape)) + ")"
+            shape = "(" + ",".join(map(str, self.shape)) + ")"
         return f"{shape}{self.type.format()}{':' + self.caption + ':' if self.caption is not None else ''}"
 
     @cached_property
@@ -88,7 +91,7 @@ class StructType(Type):
     fields: tuple[StructField, ...]
 
     def format(self) -> str:
-        return "T{" + ''.join(i.format() for i in self.fields) + "}"
+        return "T{" + "".join(i.format() for i in self.fields) + "}"
 
     @cached_property
     def fields_by_name(self) -> Mapping[str, int]:
@@ -108,19 +111,29 @@ p_typecode = pp.Char("xbB?hHiIlLqQnNefdspPuwOgG")
 p_byteorder = pp.Char("@=<>!")
 p_complex = pp.Literal("Z")
 p_atomic_type = (
-        pp.Optional(p_byteorder, default="@") +
-        pp.Optional(p_complex, default=False).set_parse_action(lambda x: x[0] == 'Z') +
-        p_typecode
+    pp.Optional(p_byteorder, default="@")
+    + pp.Optional(p_complex, default=False).set_parse_action(lambda x: x[0] == "Z")
+    + p_typecode
 ).set_parse_action(lambda x: AtomicType(typecode=x[2], byte_order=x[0], z=x[1]))
 p_struct_type = pp.Forward().set_parse_action(lambda x: StructType(tuple(x)))
 p_either_type = (p_atomic_type | p_struct_type).set_parse_action(lambda x: x[0])
 
 p_number = pp.Word(pp.nums).set_parse_action(lambda x: int(x[0]))
-p_shape = pp.Suppress("(") + pp.DelimitedList(p_number).set_parse_action(lambda x: tuple(x)) + pp.Suppress(")")
+p_shape = (
+    pp.Suppress("(")
+    + pp.DelimitedList(p_number).set_parse_action(lambda x: tuple(x))
+    + pp.Suppress(")")
+)
 p_any_shape = p_number | p_shape
-p_caption = pp.Suppress(":") + pp.CharsNotIn(":\t") + pp.Suppress(":")  # for some reason tab is causing issues
+p_caption = (
+    pp.Suppress(":") + pp.CharsNotIn(":\t") + pp.Suppress(":")
+)  # for some reason tab is causing issues
 
-p_struct_field = (pp.Optional(p_any_shape, default=None) + p_either_type + pp.Optional(p_caption, default=None)).set_parse_action(lambda x: StructField(type=x[1], shape=x[0], caption=x[2]))
+p_struct_field = (
+    pp.Optional(p_any_shape, default=None)
+    + p_either_type
+    + pp.Optional(p_caption, default=None)
+).set_parse_action(lambda x: StructField(type=x[1], shape=x[0], caption=x[2]))
 p_struct_type << pp.Suppress("T{") + pp.ZeroOrMore(p_struct_field) + pp.Suppress("}")
 
 

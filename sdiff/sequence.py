@@ -27,21 +27,21 @@ _kernels = {
 
 
 def diff(
-        a: Sequence[object],
-        b: Sequence[object],
-        eq=None,
-        atol: Optional[float] = None,
-        struct_threshold: Optional[int] = None,
-        struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
-        min_ratio: float = MIN_RATIO,
-        max_cost: int = MAX_COST,
-        max_calls: int = MAX_CALLS,
-        eq_only: bool = False,
-        kernel: Optional[str] = None,
-        rtn_diff: Union[bool, array] = True,
-        dig=None,
-        strict: bool = True,
-        no_python: bool = False,
+    a: Sequence[object],
+    b: Sequence[object],
+    eq=None,
+    atol: Optional[float] = None,
+    struct_threshold: Optional[int] = None,
+    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
+    min_ratio: float = MIN_RATIO,
+    max_cost: int = MAX_COST,
+    max_calls: int = MAX_CALLS,
+    eq_only: bool = False,
+    kernel: Optional[str] = None,
+    rtn_diff: Union[bool, array] = True,
+    dig=None,
+    strict: bool = True,
+    no_python: bool = False,
 ) -> Diff:
     """
     Computes a diff between sequences.
@@ -127,7 +127,7 @@ def diff(
         codes = rtn_diff
         rtn_diff = False
     elif rtn_diff:
-        codes = array('b', b'\xFF' * (n + m))
+        codes = array("b", b"\xff" * (n + m))
     else:
         codes = None
 
@@ -203,7 +203,9 @@ def canonize(codes: MutableSequence[int]):
             n_horizontal = n_vertical = 0
 
 
-def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) -> Generator[Chunk, None, None]:
+def codes_to_chunks(
+    a: Sequence, b: Sequence, codes: Sequence[int], dig=None
+) -> Generator[Chunk, None, None]:
     """
     Given the original sequences and diff codes, produces diff chunks.
 
@@ -222,10 +224,8 @@ def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) ->
     A list of diff chunks.
     """
     offset_a = offset_b = 0
-    for neq, code_group in groupby((
-        code
-        for code in codes
-        if code != 0),
+    for neq, code_group in groupby(
+        (code for code in codes if code != 0),
         key=lambda x: bool(x % 3),
     ):
         eq = not neq
@@ -241,8 +241,7 @@ def codes_to_chunks(a: Sequence, b: Sequence, codes: Sequence[int], dig=None) ->
         if eq and dig is not None:
             try:
                 details = [
-                    dig(i, j)
-                    for i, j in zip(range(offset_a, n), range(offset_b, m))
+                    dig(i, j) for i, j in zip(range(offset_a, n), range(offset_b, m))
                 ]
             except NotImplementedError:
                 dig = None
@@ -266,34 +265,34 @@ def _pop_optional(seq):
 
 
 def _intermediate(
-        i: int,
-        j: int,
-        a: Sequence[Any],
-        b: Sequence[Any],
-        a_: Sequence[Any],
-        b_: Sequence[Any],
-        **kwargs
+    i: int,
+    j: int,
+    a: Sequence[Any],
+    b: Sequence[Any],
+    a_: Sequence[Any],
+    b_: Sequence[Any],
+    **kwargs,
 ) -> Diff:
     return diff_nested(a=a[i], b=b[j], eq=(a_[i], b_[j]), **kwargs)
 
 
 def diff_nested(
-        a,
-        b,
-        eq=None,
-        atol: Optional[float] = None,
-        struct_threshold: Optional[int] = None,
-        struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
-        min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
-        max_cost: Union[int, tuple[int, ...]] = MAX_COST,
-        max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
-        eq_only: bool = False,
-        kernel: Optional[str] = None,
-        rtn_diff: Union[bool, array] = True,
-        nested_containers: tuple = _nested_containers,
-        max_depth: int = 0xFF,
-        _blacklist_a: set = frozenset(),
-        _blacklist_b: set = frozenset(),
+    a,
+    b,
+    eq=None,
+    atol: Optional[float] = None,
+    struct_threshold: Optional[int] = None,
+    struct_field_map: Optional[Sequence[tuple[str, str]]] = None,
+    min_ratio: Union[float, tuple[float, ...]] = MIN_RATIO,
+    max_cost: Union[int, tuple[int, ...]] = MAX_COST,
+    max_calls: Union[int, tuple[int, ...]] = MAX_CALLS,
+    eq_only: bool = False,
+    kernel: Optional[str] = None,
+    rtn_diff: Union[bool, array] = True,
+    nested_containers: tuple = _nested_containers,
+    max_depth: int = 0xFF,
+    _blacklist_a: set = frozenset(),
+    _blacklist_b: set = frozenset(),
 ) -> Diff:
     """
     Computes a diff between nested sequences.
@@ -390,7 +389,6 @@ def diff_nested(
 
     if (container_type := type(a_)) is type(b_):
         if container_type in nested_containers:
-
             if id(a_) in _blacklist_a or id(b_) in _blacklist_b:
                 raise ValueError("encountered recursive nesting of inputs")
             _blacklist_a = {*_blacklist_a, id(a_)}
@@ -439,7 +437,9 @@ def diff_nested(
             else:
                 _dig = None
 
-        elif issubclass(container_type, Sequence):  # inputs are containers but we do not recognize them as, potentially, nested
+        elif issubclass(
+            container_type, Sequence
+        ):  # inputs are containers but we do not recognize them as, potentially, nested
             _eq = (a_, b_)
             _dig = None
 

@@ -15,7 +15,7 @@ extensions = [
         name="sdiff.cython.cmyers",
         sources=["sdiff/cython/cmyers.pyx"],
         include_dirs=["sdiff/cython"],  # Allow cimport to find .pxd files
-    )
+    ),
 ]
 
 setup(
@@ -23,7 +23,7 @@ setup(
     ext_modules=cythonize(
         extensions,
         compiler_directives={
-            'language_level': 3,
+            "language_level": 3,
         },
         include_path=["sdiff/cython"],
         annotate=True,
