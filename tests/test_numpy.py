@@ -685,8 +685,6 @@ def test_align_inflate_arrays():
 
 
 def test_diff_record_zeros(monkeypatch):
-    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
-
     i8 = np.dtype("i8")
     s32 = np.dtype("S32")
 
@@ -696,10 +694,24 @@ def test_diff_record_zeros(monkeypatch):
     a = np.zeros(10, dtype=d1)
     b = np.zeros(10, dtype=d2)
 
-    assert diff(a, b) == Diff(
+    result, dtype_d = diff(a, b, return_dtype_diff=True)
+
+    monkeypatch.setattr(Chunk, "__eq__", np_chunk_eq)
+    assert result == Diff(
         ratio=1,
         diffs=[
             Chunk(data_a=a, data_b=b, eq=True, details=[array("i", [1, 1, 1, 1])] * 10)
+        ],
+    )
+    monkeypatch.undo()
+    assert dtype_d == Diff(
+        ratio=0.8,
+        diffs=[
+            Chunk(data_a=["a1"], data_b=["b1"], eq=True, details=None),
+            Chunk(data_a=[], data_b=["y1"], eq=False, details=None),
+            Chunk(data_a=["a2", "a3"], data_b=["b2", "b3"], eq=True, details=None),
+            Chunk(data_a=["x1"], data_b=[], eq=False, details=None),
+            Chunk(data_a=["a4"], data_b=["b4"], eq=True, details=None),
         ],
     )
 

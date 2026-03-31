@@ -28,7 +28,8 @@ def diff(
     record_compare_data: bool = False,
     record_min_ratio: float = MIN_RATIO,
     record_max_cost: int = MAX_COST,
-) -> Diff:
+    return_dtype_diff: bool = False,
+) -> Diff | tuple[Diff, Diff | None]:
     """
     Computes a diff between numpy tensors of equal rank.
 
@@ -80,10 +81,17 @@ def diff(
         min_ratio for record fields comparison.
     record_max_cost
         max_cost for record fields comparison.
+    return_dtype_diff
+        If True, returns a tuple ``(data_diff, dtype_d)`` where ``dtype_d`` is
+        the ``Diff`` from aligning record fields, or ``None`` for non-record
+        arrays. If False (default), returns only ``data_diff``.
 
     Returns
     -------
-    A diff object describing the diff.
+    If ``return_dtype_diff=False``: a diff object describing the diff.
+    If ``return_dtype_diff=True``: a tuple ``(data_diff, dtype_d)`` where
+    ``dtype_d`` is the record field alignment diff, or ``None`` for
+    non-record arrays.
     """
     if a.ndim != b.ndim:
         raise ValueError(f"{a.ndim=} != {b.ndim=}")
@@ -119,8 +127,10 @@ def diff(
             int(ceil(dtype_d.signature.max_cost * record_min_ratio / 2)),
             int(ceil((dtype_d.signature.max_cost - record_max_cost) / 2)),
         )
+    else:
+        dtype_d = None
 
-    return diff_nested(
+    result = diff_nested(
         a=a,
         b=b,
         atol=atol,
@@ -135,6 +145,9 @@ def diff(
         nested_containers=(np.ndarray,),
         max_depth=ndim,
     )
+    if return_dtype_diff:
+        return result, dtype_d
+    return result
 
 
 def _to_record(
