@@ -26,9 +26,9 @@ c_types = {
     "d": "double",
     "g": "long double",
     "?": "unsigned char",
-    "s": "char",
+    "s": "char",  # numpy byte string
     "u": "short",
-    "w": "int",
+    "w": "int",  # numpy unicode string
 }
 
 
@@ -65,6 +65,9 @@ class AtomicType(Type):
             )
         return c_types[self.typecode]
 
+    def is_str(self) -> bool:
+        return self.typecode in "ws"
+
 
 @dataclass(frozen=True)
 class StructField:
@@ -86,6 +89,20 @@ class StructField:
     @cached_property
     def anonymous(self) -> "StructField":
         return replace(self, type=self.type.anonymous, caption=None)
+
+    def get_array_len(self) -> int | None:
+        if isinstance(self.shape, int):
+            return self.shape
+        return None
+
+    def is_str(self) -> str | None:
+        if (
+            self.get_array_len() is not None
+            and isinstance(self.type, AtomicType)
+            and self.type.is_str()
+        ):
+            return self.type.typecode
+        return None
 
 
 @dataclass(frozen=True)

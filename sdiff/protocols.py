@@ -294,12 +294,20 @@ class _MVCodeGen:
         result_statement: str,
         indent="",
     ) -> list[str]:
-        if left_field.shape != right_field.shape:
+        stop_at = None
+        if (str_type_1 := left_field.is_str()) and (str_type_2 := right_field.is_str()):
+            if str_type_1 != str_type_2:
+                raise ValueError("attempt to compare strings and bytes")
+            shape_1d = min(left_field.get_array_len(), right_field.get_array_len())
+            shape = (shape_1d,)
+            stop_at = "0"
+        elif left_field.shape != right_field.shape:
             raise ValueError(
                 f"cannot compare fields with differing shapes:"
                 f" {left_field} vs {right_field}"
             )
-        shape = left_field.shape
+        else:
+            shape = left_field.shape
 
         if shape is None:
             expr = self.get_type_compare_expr(
@@ -323,16 +331,32 @@ class _MVCodeGen:
                 f"{indent}  break",
             ]
         )
+        if stop_at is not None:
+            code.extend(
+                [
+                    f"{indent}if {self.get_type_compare_expr(f'{left}{subscript}', left_field.type, stop_at, left_field.type)}:",  # noqa: E501
+                    f"{indent}  {result_statement.format(expr='1')}",
+                    f"{indent}  break",
+                ]
+            )
 
         for i, _s in reversed(list(enumerate(shape))):
             indent = indent[:-2]
             if i == 0:
-                code.extend(
-                    [
-                        f"{indent}else:",
-                        f"{indent}  {result_statement.format(expr='1')}",
-                    ]
-                )
+                code.append(f"{indent}else:")
+                if stop_at is not None:
+                    subscript = f"[{shape_1d}]"
+                    if left_field.get_array_len() > right_field.get_array_len():
+                        indent += "  "
+                        code.append(
+                            f"{indent}if {self.get_type_compare_expr(f'{left}{subscript}', left_field.type, stop_at, left_field.type)}:"  # noqa: E501
+                        )
+                    elif left_field.get_array_len() < right_field.get_array_len():
+                        indent += "  "
+                        code.append(
+                            f"{indent}if {self.get_type_compare_expr(f'{right}{subscript}', right_field.type, stop_at, right_field.type)}:"  # noqa: E501
+                        )
+                code.append(f"{indent}  {result_statement.format(expr='1')}")
             else:
                 code.extend(
                     [

@@ -151,7 +151,7 @@ def diff(
 
 
 def _to_record(
-    arg, look_field_names: bool, look_field_dtypes: bool
+    arg, look_field_names: bool, look_field_dtypes: bool, look_str_length: bool
 ) -> tuple[list[str], list[Any], np.recarray | None]:
     if isinstance(arg, np.ndarray):
         if arg.dtype.names is None:
@@ -173,7 +173,9 @@ def _to_record(
     names = [i.caption for i in parsed_fields]
 
     # shapes always belong to the signature
-    signature = [[i.shape for i in parsed_fields]]
+    signature = [
+        [i.shape if look_str_length or not i.is_str() else -1 for i in parsed_fields]
+    ]
     if look_field_names:
         signature.append(names)
     if look_field_dtypes:
@@ -197,6 +199,7 @@ def dtype_diff(
     rtn_diff: bool = True,
     look_field_names: bool = True,
     look_field_dtypes: bool = False,
+    look_str_length: bool = False,
     look_field_data: bool = False,
     data_atol: float | None = None,
     data_min_ratio: float = MIN_RATIO,
@@ -243,6 +246,10 @@ def dtype_diff(
         If True, requires aligned fields to have the same data type.
     look_field_data
         If True, and both a, b are arrays, requires aligned fields to have data aligned.
+    look_str_length
+        If True, enforces comparable fixed-length strings or bytes to have the same
+        dtype length. Otherwise, allows comparing different-length strings such as
+        ``S3`` and ``S4`` (3- and 4-length encoded strings respectively).
     data_atol
         If set, will use an approximate condition ``abs(a[i] - b[j]) <= atol``
         instead of the equality comparison ``a[i] == b[j]`` for comparing data.
@@ -255,8 +262,18 @@ def dtype_diff(
     -------
     The resulting diff between records' fields.
     """
-    names_a, fingerprints_a, data_a = _to_record(a, look_field_names, look_field_dtypes)
-    names_b, fingerprints_b, data_b = _to_record(b, look_field_names, look_field_dtypes)
+    names_a, fingerprints_a, data_a = _to_record(
+        a,
+        look_field_names=look_field_names,
+        look_field_dtypes=look_field_dtypes,
+        look_str_length=look_str_length,
+    )
+    names_b, fingerprints_b, data_b = _to_record(
+        b,
+        look_field_names=look_field_names,
+        look_field_dtypes=look_field_dtypes,
+        look_str_length=look_str_length,
+    )
 
     if (data_a is None) != (data_b is None):
         raise ValueError(f"inconsistent inputs: {type(a)} vs {type(b)}")
@@ -316,8 +333,12 @@ def align_inflate_arrays(
     -------
     A pair of aligned inflated arrays.
     """
-    _, _, a = _to_record(a, look_field_names=False, look_field_dtypes=True)
-    _, _, b = _to_record(b, look_field_names=False, look_field_dtypes=True)
+    _, _, a = _to_record(
+        a, look_field_names=False, look_field_dtypes=True, look_str_length=False
+    )
+    _, _, b = _to_record(
+        b, look_field_names=False, look_field_dtypes=True, look_str_length=False
+    )
 
     names_a, names_b = field_diff.get_inflated_ab()
     init_a, init_b = field_diff.with_data(

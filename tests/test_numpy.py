@@ -606,6 +606,20 @@ def test_dtype_diff_2():
     )
 
 
+@pytest.mark.parametrize("look", [False, True])
+def test_dtype_diff_str_length(look):
+    s16 = np.dtype("S16")
+    s32 = np.dtype("S32")
+
+    data_a = np.array(["cats", "dogs"], dtype=s16)
+    data_b = np.array(["cats", "dogs"], dtype=s32)
+
+    assert dtype_diff(data_a, data_b, look_str_length=look) == Diff(
+        ratio=1.0 * (not look),
+        diffs=[Chunk(data_a=["field"], data_b=["field"], eq=not look)],
+    )
+
+
 def test_dtype_diff_atomic_0():
     a = np.arange(12)
     b = np.arange(1, 11)
@@ -682,6 +696,20 @@ def test_align_inflate_arrays():
             ),
         )
     ).all()
+
+
+def test_align_inflate_str_len():
+    data_a = np.array(["dog", "cat"])
+    assert data_a.dtype == np.dtype("<U3")
+    data_b = np.array(["horse", "rabbit"])
+    assert data_b.dtype == np.dtype("<U6")
+
+    d = dtype_diff(data_a, data_b)
+    assert d.ratio == 1.0
+
+    data_a_aligned, data_b_aligned = align_inflate_arrays(data_a, data_b, d)
+    assert (data_a_aligned["field"] == data_a).all()
+    assert (data_b_aligned["field"] == data_b).all()
 
 
 def test_diff_record_zeros(monkeypatch):
@@ -836,5 +864,27 @@ def test_diff_record_2(monkeypatch):
             Chunk(
                 data_a=a[3:], data_b=b[3:], eq=True, details=[array("i", [1, 1, 1])] * 3
             ),
+        ],
+    )
+
+
+@pytest.mark.parametrize("cat", [b"rabbit", b"cat123"])
+def test_diff_record_str_len(cat):
+    data_a = np.array([b"dog", b"cat"])
+    assert data_a.dtype == np.dtype("S3")
+    data_b = np.array([b"dog", cat])
+    assert data_b.dtype == np.dtype("S6")
+
+    d = diff(data_a, data_b, min_ratio=0.1)
+    assert d == Diff(
+        ratio=0.5,
+        diffs=[
+            Chunk(
+                data_a=np.array([b"dog"]),
+                data_b=np.array([b"dog"]),
+                eq=True,
+                details=[array("i", [1])],
+            ),
+            Chunk(data_a=np.array([b"cat"]), data_b=np.array([cat]), eq=False),
         ],
     )
