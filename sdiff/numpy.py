@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from functools import partial
 from itertools import chain, groupby, pairwise
 from math import ceil
@@ -849,3 +849,78 @@ def diff_aligned_2d(
         row_diff_sig=signatures[0],
         col_diff_sig=signatures[1],
     )
+
+
+def resolve_object_fields(
+    a: np.ndarray,
+    fallback: Callable | None = None,
+    max_str_length: int | None = None,
+) -> np.ndarray:
+    """
+    Converts object-typed fields in a numpy record array to concrete dtypes.
+
+    This conversion is used to prevent "slow" object == object comparison by
+    converting and/or typing record fields as fixed-length strings or bytes.
+
+    Parameters
+    ----------
+    a
+        A numpy record array to convert.
+    fallback
+        A callable to map mixed-type data.
+    max_str_length
+        A maximal fixed length.
+
+    Returns
+    -------
+    A new record array with object fields replaced by concrete-dtype arrays.
+    """
+    if a.dtype.names is None:
+        raise ValueError("a must be a record array (dtype.names is None)")
+
+    def _str_len(arr: np.ndarray) -> int:
+        """Character/byte width of a fixed-length string/bytes array."""
+        return arr.dtype.itemsize // (4 if arr.dtype.kind == "U" else 1)
+
+    def _truncate(arr: np.ndarray) -> np.ndarray:
+        """Truncate a U/S array to max_str_length if necessary."""
+        if (
+            max_str_length is not None
+            and arr.dtype.kind in "US"
+            and _str_len(arr) > max_str_length
+        ):
+            return arr.astype(f"{arr.dtype.kind}{max_str_length}")
+        return arr
+
+    new_arrays: list[np.ndarray] = []
+    new_names: list[str] = []
+
+    for name in a.dtype.names:
+        col: np.ndarray = a[name]
+        new_names.append(name)
+
+        if col.dtype != object:
+            new_arrays.append(_truncate(col))
+            continue
+
+        # Inspect actual Python types stored in the object array.
+        flat = col.ravel()
+        all_bytes = all(isinstance(v, bytes) for v in flat)
+        all_str = not all_bytes and all(isinstance(v, str) for v in flat)
+
+        if all_bytes or all_str:
+            kind = "S" if all_bytes else "U"
+            max_len = max((len(v) for v in flat), default=0)
+            if max_str_length is not None:
+                max_len = min(max_len, max_str_length)
+            new_arrays.append(col.astype(f"{kind}{max_len}"))
+        else:
+            if fallback is None:
+                raise ValueError(
+                    f"field {name!r} contains mixed or non-bytes/str objects "
+                    f"and no fallback callable was provided"
+                )
+            mapped = np.array([fallback(v) for v in flat]).reshape(col.shape)
+            new_arrays.append(_truncate(mapped))
+
+    return np.rec.fromarrays(new_arrays, names=new_names)
