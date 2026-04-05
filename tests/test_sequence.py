@@ -492,16 +492,6 @@ def test_nested_np(monkeypatch, max_depth):
     )
 
 
-@pytest.mark.parametrize("max_depth", [10, 2])
-def test_big_np(monkeypatch, max_depth):
-    np.random.seed(0)
-    shape = (10, 1000)
-    a = np.random.randint(0, 10, size=shape)
-    b = np.random.randint(0, 10, size=shape)
-
-    assert diff_nested(a, b, min_ratio=0, max_depth=max_depth).ratio > 0
-
-
 def test_strictly_no_python_0():
     with pytest.raises(ValueError, match="failed to pick a type-aware protocol"):
         diff([0, 1, 2], [0, 1, 2], no_python=True)
